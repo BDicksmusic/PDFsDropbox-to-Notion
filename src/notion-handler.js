@@ -163,22 +163,17 @@ class NotionHandler {
 
     // Summary section
     if (summary) {
-      blocks.push(
-        {
-          object: 'block',
-          type: 'heading_2',
-          heading_2: {
-            rich_text: [{ type: 'text', text: { content: 'Summary' } }]
-          }
-        },
-        {
-          object: 'block',
-          type: 'paragraph',
-          paragraph: {
-            rich_text: [{ type: 'text', text: { content: summary } }]
-          }
+      blocks.push({
+        object: 'block',
+        type: 'heading_2',
+        heading_2: {
+          rich_text: [{ type: 'text', text: { content: 'Summary' } }]
         }
-      );
+      });
+      
+      // Add chunked summary blocks to stay under 2000 character limit
+      const summaryBlocks = this.createChunkedTextBlocks(summary);
+      blocks.push(...summaryBlocks);
     }
 
     // Key Points section
@@ -229,22 +224,18 @@ class NotionHandler {
 
     // Topics section
     if (topics && topics.length > 0) {
-      blocks.push(
-        {
-          object: 'block',
-          type: 'heading_2',
-          heading_2: {
-            rich_text: [{ type: 'text', text: { content: 'Topics' } }]
-          }
-        },
-        {
-          object: 'block',
-          type: 'paragraph',
-          paragraph: {
-            rich_text: [{ type: 'text', text: { content: topics.join(', ') } }]
-          }
+      blocks.push({
+        object: 'block',
+        type: 'heading_2',
+        heading_2: {
+          rich_text: [{ type: 'text', text: { content: 'Topics' } }]
         }
-      );
+      });
+      
+      // Add chunked topics blocks to stay under 2000 character limit
+      const topicsText = topics.join(', ');
+      const topicsBlocks = this.createChunkedTextBlocks(topicsText);
+      blocks.push(...topicsBlocks);
     }
 
     // Metadata section
@@ -279,22 +270,72 @@ class NotionHandler {
 
     // Full Transcript section
     if (originalText) {
-      blocks.push(
-        {
-          object: 'block',
-          type: 'heading_2',
-          heading_2: {
-            rich_text: [{ type: 'text', text: { content: 'Full Transcript' } }]
-          }
-        },
-        {
-          object: 'block',
-          type: 'paragraph',
-          paragraph: {
-            rich_text: [{ type: 'text', text: { content: originalText } }]
-          }
+      blocks.push({
+        object: 'block',
+        type: 'heading_2',
+        heading_2: {
+          rich_text: [{ type: 'text', text: { content: 'Full Transcript' } }]
         }
-      );
+      });
+      
+      // Add chunked transcript blocks to stay under 2000 character limit
+      const transcriptBlocks = this.createChunkedTextBlocks(originalText);
+      blocks.push(...transcriptBlocks);
+    }
+
+    return blocks;
+  }
+
+  // Create chunked text blocks to stay under Notion's 2000 character limit
+  createChunkedTextBlocks(text, maxLength = 1900) {
+    const blocks = [];
+    
+    if (!text || text.length === 0) {
+      return blocks;
+    }
+
+    // If text is short enough, return single block
+    if (text.length <= maxLength) {
+      return [{
+        object: 'block',
+        type: 'paragraph',
+        paragraph: {
+          rich_text: [{ type: 'text', text: { content: text } }]
+        }
+      }];
+    }
+
+    // Split text into chunks
+    let currentPosition = 0;
+    while (currentPosition < text.length) {
+      let chunkEnd = currentPosition + maxLength;
+      
+      // If not at the end, try to break at a word boundary
+      if (chunkEnd < text.length) {
+        const lastSpaceInChunk = text.lastIndexOf(' ', chunkEnd);
+        const lastPeriodInChunk = text.lastIndexOf('.', chunkEnd);
+        const lastNewlineInChunk = text.lastIndexOf('\n', chunkEnd);
+        
+        // Use the latest boundary that's reasonable
+        const boundaries = [lastSpaceInChunk, lastPeriodInChunk, lastNewlineInChunk]
+          .filter(pos => pos > currentPosition + maxLength * 0.7); // Don't break too early
+        
+        if (boundaries.length > 0) {
+          chunkEnd = Math.max(...boundaries) + 1;
+        }
+      }
+
+      const chunk = text.substring(currentPosition, Math.min(chunkEnd, text.length));
+      
+      blocks.push({
+        object: 'block',
+        type: 'paragraph',
+        paragraph: {
+          rich_text: [{ type: 'text', text: { content: chunk.trim() } }]
+        }
+      });
+
+      currentPosition = chunkEnd;
     }
 
     return blocks;
