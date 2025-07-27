@@ -1,4 +1,4 @@
-# Dropbox to Notion Voice Automation
+# Automation Connections
 
 A cost-effective automation system that processes voice recordings from Dropbox, transcribes them, extracts key points, and imports the data into Notion.
 
@@ -21,7 +21,7 @@ A cost-effective automation system that processes voice recordings from Dropbox,
 ## Project Structure
 
 ```
-dropbox-notion-automation/
+automation-connections/
 ├── src/
 │   ├── server.js          # Main webhook server
 │   ├── dropbox-handler.js # Dropbox file processing

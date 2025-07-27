@@ -1,7 +1,7 @@
 {
-  "name": "dropbox-notion-automation",
+  "name": "automation-connections",
   "version": "1.0.0",
-  "description": "Automated voice recording processing from Dropbox to Notion",
+  "description": "Automation-Connections - Voice recording processing from Dropbox to Notion",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",

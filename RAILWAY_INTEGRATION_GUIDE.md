@@ -23,7 +23,7 @@ Your Workspace
 ### Option B: Via Railway CLI
 ```bash
 # Navigate to your automation code
-cd dropbox-notion-automation
+cd automation-connections
 
 # Link to your existing Railway project
 railway link

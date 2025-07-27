@@ -37,14 +37,35 @@ class AutomationServer {
   }
 
   setupRoutes() {
+    // Root endpoint for webhook verification
+    this.app.get('/', (req, res) => {
+      res.json({ 
+        status: 'running', 
+        service: 'Automation-Connections',
+        timestamp: new Date().toISOString()
+      });
+    });
+
     // Health check endpoint
     this.app.get('/health', (req, res) => {
       res.json({ 
         status: 'healthy', 
         timestamp: new Date().toISOString(),
         backgroundMode: this.backgroundMode,
-        service: 'dropbox-notion-automation'
+        service: 'Automation-Connections'
       });
+    });
+
+    // Dropbox webhook verification endpoint
+    this.app.get('/webhook', (req, res) => {
+      const challenge = req.query.challenge;
+      if (challenge) {
+        logger.info('Dropbox webhook verification challenge received', { challenge });
+        res.set('Content-Type', 'text/plain');
+        res.send(challenge);
+      } else {
+        res.status(400).json({ error: 'Missing challenge parameter' });
+      }
     });
 
     // Dropbox webhook endpoint
