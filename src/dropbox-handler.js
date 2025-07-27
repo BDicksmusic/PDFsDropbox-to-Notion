@@ -9,9 +9,96 @@ const { logger, ensureTempDir, cleanupTempFile, isValidAudioFormat, isValidFileS
 class DropboxHandler {
   constructor() {
     this.accessToken = config.dropbox.accessToken;
+    this.refreshToken = config.dropbox.refreshToken; // Add refresh token support
+    this.appKey = config.dropbox.appKey; // Add app key for token refresh
+    this.appSecret = config.dropbox.appSecret; // Add app secret for token refresh
     this.webhookSecret = config.dropbox.webhookSecret;
     this.folderPath = config.dropbox.folderPath;
     // Remove in-memory tracking - we'll use Notion database as source of truth
+  }
+
+  // Refresh access token using refresh token
+  async refreshAccessToken() {
+    if (!this.refreshToken || !this.appKey || !this.appSecret) {
+      throw new Error('Refresh token, app key, and app secret are required for token refresh');
+    }
+
+    try {
+      logger.info('Attempting to refresh Dropbox access token');
+      
+      const response = await axios({
+        method: 'POST',
+        url: 'https://api.dropboxapi.com/oauth2/token',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        data: new URLSearchParams({
+          grant_type: 'refresh_token',
+          refresh_token: this.refreshToken,
+          client_id: this.appKey,
+          client_secret: this.appSecret
+        })
+      });
+
+      this.accessToken = response.data.access_token;
+      
+      // If a new refresh token is provided, update it
+      if (response.data.refresh_token) {
+        this.refreshToken = response.data.refresh_token;
+      }
+
+      logger.info('Successfully refreshed Dropbox access token');
+      
+      // Note: In production, you should save these tokens to your environment/database
+      // For now, we'll just use them in memory for the current session
+      
+      return this.accessToken;
+    } catch (error) {
+      logger.error('Failed to refresh Dropbox access token:', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  // Make authenticated request with automatic token refresh
+  async makeAuthenticatedRequest(requestConfig) {
+    try {
+      // First attempt with current token
+      const response = await axios({
+        ...requestConfig,
+        headers: {
+          ...requestConfig.headers,
+          'Authorization': `Bearer ${this.accessToken}`
+        }
+      });
+      
+      return response;
+    } catch (error) {
+      // If we get a 401, try to refresh the token and retry once
+      if (error.response?.status === 401 && this.refreshToken) {
+        logger.warn('Received 401 error, attempting to refresh token and retry');
+        
+        try {
+          await this.refreshAccessToken();
+          
+          // Retry the request with the new token
+          const retryResponse = await axios({
+            ...requestConfig,
+            headers: {
+              ...requestConfig.headers,
+              'Authorization': `Bearer ${this.accessToken}`
+            }
+          });
+          
+          return retryResponse;
+        } catch (refreshError) {
+          logger.error('Token refresh failed, cannot retry request');
+          throw refreshError;
+        }
+      }
+      
+      // If it's not a 401 or we don't have refresh capability, throw the original error
+      throw error;
+    }
   }
 
   // Verify webhook signature
@@ -129,11 +216,10 @@ class DropboxHandler {
     try {
       logger.info(`Getting shareable URL for: ${filePath}`);
 
-      const response = await axios({
+      const response = await this.makeAuthenticatedRequest({
         method: 'POST',
         url: 'https://api.dropboxapi.com/2/sharing/create_shared_link_with_settings',
         headers: {
-          'Authorization': `Bearer ${this.accessToken}`,
           'Content-Type': 'application/json'
         },
         data: {
@@ -155,11 +241,10 @@ class DropboxHandler {
         try {
           logger.info(`Shared link already exists for ${filePath}, retrieving existing link`);
           
-          const existingResponse = await axios({
+          const existingResponse = await this.makeAuthenticatedRequest({
             method: 'POST',
             url: 'https://api.dropboxapi.com/2/sharing/list_shared_links',
             headers: {
-              'Authorization': `Bearer ${this.accessToken}`,
               'Content-Type': 'application/json'
             },
             data: {
@@ -191,11 +276,10 @@ class DropboxHandler {
       
       logger.info(`Downloading file from Dropbox: ${dropboxPath}`);
 
-      const response = await axios({
+      const response = await this.makeAuthenticatedRequest({
         method: 'POST',
         url: 'https://content.dropboxapi.com/2/files/download',
         headers: {
-          'Authorization': `Bearer ${this.accessToken}`,
           'Dropbox-API-Arg': JSON.stringify({
             path: dropboxPath
           }),
@@ -228,11 +312,10 @@ class DropboxHandler {
   // Get file metadata
   async getFileMetadata(filePath) {
     try {
-      const response = await axios({
+      const response = await this.makeAuthenticatedRequest({
         method: 'POST',
         url: 'https://api.dropboxapi.com/2/files/get_metadata',
         headers: {
-          'Authorization': `Bearer ${this.accessToken}`,
           'Content-Type': 'application/json'
         },
         data: {
@@ -250,11 +333,10 @@ class DropboxHandler {
   // List files in monitored folder
   async listFiles() {
     try {
-      const response = await axios({
+      const response = await this.makeAuthenticatedRequest({
         method: 'POST',
         url: 'https://api.dropboxapi.com/2/files/list_folder',
         headers: {
-          'Authorization': `Bearer ${this.accessToken}`,
           'Content-Type': 'application/json'
         },
         data: {
@@ -266,6 +348,16 @@ class DropboxHandler {
       return response.data.entries.filter(entry => entry['.tag'] === 'file');
     } catch (error) {
       logger.error(`Failed to list files in ${this.folderPath}:`, error.message);
+      
+      // Provide more helpful error messages
+      if (error.response?.status === 401) {
+        logger.error('Authentication failed. Please check your Dropbox access token or refresh token configuration.');
+        logger.error('To fix this:');
+        logger.error('1. Generate a new access token at https://www.dropbox.com/developers/apps');
+        logger.error('2. Update your DROPBOX_ACCESS_TOKEN environment variable');
+        logger.error('3. Or implement OAuth 2.0 flow with refresh tokens for automatic renewal');
+      }
+      
       throw error;
     }
   }

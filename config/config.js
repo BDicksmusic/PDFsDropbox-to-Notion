@@ -3,6 +3,9 @@ require('dotenv').config();
 const config = {
   dropbox: {
     accessToken: process.env.DROPBOX_ACCESS_TOKEN,
+    refreshToken: process.env.DROPBOX_REFRESH_TOKEN, // For automatic token refresh
+    appKey: process.env.DROPBOX_APP_KEY, // Required for token refresh
+    appSecret: process.env.DROPBOX_APP_SECRET, // Required for token refresh
     webhookSecret: process.env.DROPBOX_WEBHOOK_SECRET,
     folderPath: process.env.DROPBOX_FOLDER_PATH || '/Recordings'
   },
