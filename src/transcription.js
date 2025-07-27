@@ -365,6 +365,8 @@ Format your response as valid JSON with these fields:
         ? transcript.substring(0, maxChars) + '...' 
         : transcript;
 
+      logger.info(`Using ${truncatedTranscript.length} characters for title generation`);
+
       const response = await this.openai.chat.completions.create({
         model: config.transcription.summaryModel,
         messages: [{
@@ -387,7 +389,11 @@ Generate only the title, nothing else. Examples of good titles:
         temperature: 0.3
       });
 
+      logger.info(`OpenAI response received for title generation`);
+
       let title = response.choices[0].message.content.trim();
+      
+      logger.info(`Raw generated title: "${title}"`);
       
       // Clean up the title - remove quotes and ensure it's reasonable length
       title = title.replace(/^["']|["']$/g, ''); // Remove surrounding quotes
@@ -397,8 +403,10 @@ Generate only the title, nothing else. Examples of good titles:
       if (words.length < 2) {
         // If too short, add descriptive words
         title = `Audio Recording ${fileName.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ')}`;
+        logger.info(`Title too short, expanded to: "${title}"`);
       } else if (words.length > 7) {
         title = words.slice(0, 7).join(' ');
+        logger.info(`Title too long, truncated to: "${title}"`);
       }
       
       // Final validation - ensure we have a reasonable title
@@ -407,11 +415,12 @@ Generate only the title, nothing else. Examples of good titles:
         title = this.createFallbackTitle(fileName);
       }
 
-      logger.info(`Generated title: "${title}" for ${fileName}`);
+      logger.info(`Final generated title: "${title}" for ${fileName}`);
       return title;
 
     } catch (error) {
       logger.error(`Title generation failed for ${fileName}:`, error.message);
+      logger.error(`Title generation error details:`, error.response?.data || error);
       // Fallback to cleaned filename with descriptive prefix
       const fallbackTitle = this.createFallbackTitle(fileName);
       logger.info(`Using fallback title: "${fallbackTitle}"`);
