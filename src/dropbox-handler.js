@@ -80,6 +80,7 @@ class DropboxHandler {
     const fileName = path.basename(filePath);
 
     logger.info(`Processing file: ${fileName}`);
+    logger.info(`File path: ${filePath}, Folder path: ${this.folderPath}`);
 
     // Validate file format
     if (!isValidAudioFormat(fileName)) {
@@ -142,6 +143,7 @@ class DropboxHandler {
 
     } catch (error) {
       logger.error(`Failed to download file ${dropboxPath}:`, error.message);
+      logger.error(`Download error details:`, error.response?.data || error);
       throw error;
     }
   }
