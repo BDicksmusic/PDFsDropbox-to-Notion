@@ -115,17 +115,18 @@ class DropboxHandler {
       
       logger.info(`Downloading file from Dropbox: ${dropboxPath}`);
 
-      const response = await axios({
-        method: 'POST',
-        url: 'https://content.dropboxapi.com/2/files/download',
-        headers: {
-          'Authorization': `Bearer ${this.accessToken}`,
-          'Dropbox-API-Arg': JSON.stringify({
-            path: dropboxPath
-          })
-        },
-        responseType: 'stream'
-      });
+             const response = await axios({
+         method: 'POST',
+         url: 'https://content.dropboxapi.com/2/files/download',
+         headers: {
+           'Authorization': `Bearer ${this.accessToken}`,
+           'Dropbox-API-Arg': JSON.stringify({
+             path: dropboxPath
+           }),
+           'Content-Type': 'application/octet-stream'
+         },
+         responseType: 'stream'
+       });
 
       const writer = fs.createWriteStream(localFilePath);
       response.data.pipe(writer);
