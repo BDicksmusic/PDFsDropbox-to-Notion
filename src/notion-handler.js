@@ -62,7 +62,7 @@ class NotionHandler {
       'Manual Name Input': {
         title: [
           {
-            type: 'rich_text',
+            type: 'text',
             text: {
               content: displayName
             }
