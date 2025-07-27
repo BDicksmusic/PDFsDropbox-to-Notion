@@ -59,6 +59,16 @@ class NotionHandler {
           }
         ]
       },
+      'Manual Name Input': {
+        title: [
+          {
+            type: 'text',
+            text: {
+              content: displayName
+            }
+          }
+        ]
+      },
       // Main Entry property (matches your database)
       'Main Entry': {
         rich_text: [
@@ -71,20 +81,6 @@ class NotionHandler {
         ]
       }
     };
-
-    // Add Manual Name Input if it exists in the schema
-    if (customName) {
-      properties['Manual Name Input'] = {
-        rich_text: [
-          {
-            type: 'text',
-            text: {
-              content: displayName
-            }
-          }
-        ]
-      };
-    }
 
     // Add Audio Log property to mark as processed
     properties['Audio Log?'] = {
