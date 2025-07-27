@@ -19,9 +19,12 @@ class DropboxHandler {
       return true;
     }
 
+    // Convert body to string if it's an object
+    const bodyString = typeof body === 'string' ? body : JSON.stringify(body);
+    
     const expectedSignature = crypto
       .createHmac('sha256', this.webhookSecret)
-      .update(body)
+      .update(bodyString)
       .digest('hex');
 
     return crypto.timingSafeEqual(

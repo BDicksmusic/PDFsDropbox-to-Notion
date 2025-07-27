@@ -4,7 +4,7 @@ const config = {
   dropbox: {
     accessToken: process.env.DROPBOX_ACCESS_TOKEN,
     webhookSecret: process.env.DROPBOX_WEBHOOK_SECRET,
-    folderPath: process.env.DROPBOX_FOLDER_PATH || '/Apps/Easy Voice Recorder'
+    folderPath: process.env.DROPBOX_FOLDER_PATH || '/Recordings'
   },
   
   notion: {

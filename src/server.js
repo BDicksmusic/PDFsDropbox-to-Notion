@@ -84,7 +84,7 @@ class AutomationServer {
           return res.status(401).json({ error: 'Invalid signature' });
         }
 
-        const notification = JSON.parse(req.body.toString());
+        const notification = req.body;
         logger.info('Received Dropbox webhook', { notification });
 
         // Process webhook asynchronously
