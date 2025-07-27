@@ -44,8 +44,9 @@ class NotionHandler {
 
   // Build the page data structure for Notion
   async buildPageData(audioData, customName = null) {
-    const { fileName, summary, keyPoints, actionItems, topics, sentiment, metadata, shareableUrl } = audioData;
-    const displayName = customName || fileName.replace(/\.[^/.]+$/, ''); // Remove file extension
+    const { fileName, generatedTitle, summary, keyPoints, actionItems, topics, sentiment, metadata, shareableUrl } = audioData;
+    // Use customName if provided, otherwise use generated title, fallback to filename
+    const displayName = customName || generatedTitle || fileName.replace(/\.[^/.]+$/, ''); // Remove file extension
 
     const properties = {
       // Name property (matches your database)

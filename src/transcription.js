@@ -324,9 +324,13 @@ Format your response as valid JSON with these fields:
       // Step 2: Extract key points
       const keyPoints = await this.extractKeyPoints(transcription, fileName);
 
+      // Step 3: Generate descriptive title
+      const generatedTitle = await this.generateTitle(transcription.text, fileName);
+
       // Combine results
       const result = {
         fileName: fileName,
+        generatedTitle: generatedTitle,
         originalText: transcription.text,
         summary: keyPoints.summary,
         keyPoints: keyPoints.keyPoints,
@@ -347,6 +351,66 @@ Format your response as valid JSON with these fields:
     } catch (error) {
       logger.error(`Audio processing failed for ${fileName}:`, error.message);
       throw error;
+    }
+  }
+
+  // Generate a descriptive title from transcript content
+  async generateTitle(transcript, fileName) {
+    try {
+      logger.info(`Generating title for: ${fileName}`);
+
+      // Truncate transcript if it's too long for the API
+      const maxChars = 8000; // Leave room for prompt and response
+      const truncatedTranscript = transcript.length > maxChars 
+        ? transcript.substring(0, maxChars) + '...' 
+        : transcript;
+
+      const response = await this.openai.chat.completions.create({
+        model: config.transcription.summaryModel,
+        messages: [{
+          role: 'user',
+          content: `Please generate a concise, descriptive title for this audio transcript. The title should be 3-7 words long and capture the main topic or purpose of the conversation.
+
+Transcript:
+${truncatedTranscript}
+
+Generate only the title, nothing else. Examples of good titles:
+- "Team Meeting Project Updates"
+- "Customer Support Call Resolution" 
+- "Marketing Strategy Discussion"
+- "Technical Architecture Review"
+- "Sales Pipeline Review Meeting"`
+        }],
+        max_tokens: 50,
+        temperature: 0.3
+      });
+
+      let title = response.choices[0].message.content.trim();
+      
+      // Clean up the title - remove quotes and ensure it's reasonable length
+      title = title.replace(/^["']|["']$/g, ''); // Remove surrounding quotes
+      
+      // Ensure title is within word count limits
+      const words = title.split(' ');
+      if (words.length > 7) {
+        title = words.slice(0, 7).join(' ');
+      }
+      
+      // Fallback to filename-based title if generation failed
+      if (!title || title.length < 3) {
+        logger.warn(`Generated title too short, using fallback for ${fileName}`);
+        title = fileName.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
+      }
+
+      logger.info(`Generated title: "${title}" for ${fileName}`);
+      return title;
+
+    } catch (error) {
+      logger.error(`Title generation failed for ${fileName}:`, error.message);
+      // Fallback to cleaned filename
+      const fallbackTitle = fileName.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
+      logger.info(`Using fallback title: "${fallbackTitle}"`);
+      return fallbackTitle;
     }
   }
 }

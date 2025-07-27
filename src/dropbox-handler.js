@@ -100,8 +100,10 @@ class DropboxHandler {
     let shareableUrl = null;
     try {
       shareableUrl = await this.getShareableUrl(filePath);
+      logger.info(`Successfully obtained shareable URL for ${fileName}`);
     } catch (error) {
-      logger.warn(`Failed to get shareable URL for ${fileName}:`, error.message);
+      logger.error(`Failed to get shareable URL for ${fileName}:`, error.message);
+      logger.warn(`Will fall back to filename-based duplicate detection for ${fileName}`);
     }
 
     // Download file

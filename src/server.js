@@ -207,18 +207,28 @@ class AutomationServer {
         return;
       }
 
-      // Step 3: Check which files haven't been processed yet
+      // Step 3: Deduplicate files by path to avoid processing the same file multiple times
+      const fileMap = new Map();
+      validFiles.forEach(file => {
+        fileMap.set(file.originalPath, file);
+      });
+      const uniqueFiles = Array.from(fileMap.values());
+      
+      logger.info(`Deduplicated ${validFiles.length} files to ${uniqueFiles.length} unique files`);
+
+      // Step 4: Check which files haven't been processed yet
       const unprocessedFiles = [];
-      for (const file of validFiles) {
+      for (const file of uniqueFiles) {
         try {
           // Use URL-based tracking if available, fallback to filename
           let alreadyProcessed = false;
           
           if (file.shareableUrl) {
+            logger.info(`Using URL-based duplicate check for ${file.fileName}: ${file.shareableUrl}`);
             alreadyProcessed = await this.notionHandler.isFileAlreadyProcessedByUrl(file.shareableUrl);
             logger.info(`URL-based check for ${file.fileName}: ${alreadyProcessed ? 'already processed' : 'new file'}`);
           } else {
-            logger.warn(`No shareable URL for ${file.fileName}, falling back to filename check`);
+            logger.warn(`No shareable URL available for ${file.fileName}, falling back to filename check`);
             alreadyProcessed = await this.notionHandler.isFileAlreadyProcessed(file.fileName);
             logger.info(`Filename-based check for ${file.fileName}: ${alreadyProcessed ? 'already processed' : 'new file'}`);
           }
