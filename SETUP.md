@@ -51,10 +51,10 @@ This guide will walk you through setting up the complete automation system step 
 3. Set the URL to: `https://your-railway-app.railway.app/webhook/dropbox`
 4. Copy the **Webhook secret**
 
-### 2.4 Create Voice Recordings Folder
+### 2.4 Create Easy Voice Recorder Folder
 
-1. In your Dropbox, create a folder called "Voice Recordings"
-2. Note the path (e.g., `/Voice Recordings`)
+1. In your Dropbox, create a folder called "Easy Voice Recorder"
+2. Note the path (e.g., `/apps/Easy Voice Recorder`)
 
 ## Step 3: Notion Configuration
 
@@ -104,7 +104,7 @@ Update your `.env` file with all the values:
 # Dropbox Configuration
 DROPBOX_ACCESS_TOKEN=your_dropbox_access_token_here
 DROPBOX_WEBHOOK_SECRET=your_webhook_secret_here
-DROPBOX_FOLDER_PATH=/Voice Recordings
+DROPBOX_FOLDER_PATH=/apps/Easy Voice Recorder
 
 # Notion Configuration
 NOTION_API_KEY=your_notion_integration_token_here
@@ -188,7 +188,7 @@ Should show all services as "connected"
 
 ### 7.3 Test with Audio File
 
-1. Upload an audio file to your Dropbox "Voice Recordings" folder
+1. Upload an audio file to your Dropbox "Easy Voice Recorder" folder
 2. Check the logs in Railway dashboard
 3. Verify a new page appears in your Notion database
 
