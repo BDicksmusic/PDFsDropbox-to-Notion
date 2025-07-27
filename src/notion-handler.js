@@ -87,7 +87,7 @@ class NotionHandler {
     }
 
     // Add Audio Log property to mark as processed
-    properties['Audio Log'] = {
+    properties['Audio Log?'] = {
       checkbox: true
     };
 
