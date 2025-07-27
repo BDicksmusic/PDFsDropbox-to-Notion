@@ -368,7 +368,7 @@ Format your response as valid JSON with these fields:
       logger.info(`Using ${truncatedTranscript.length} characters for title generation`);
 
       const response = await this.openai.chat.completions.create({
-        model: config.transcription.summaryModel,
+        model: config.transcription.analysisModel,
         messages: [{
           role: 'user',
           content: `Please generate a concise, descriptive title for this audio transcript. The title should be 2-7 words long and capture the main topic or purpose of the conversation.
