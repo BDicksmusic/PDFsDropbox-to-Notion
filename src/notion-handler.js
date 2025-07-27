@@ -47,45 +47,55 @@ class NotionHandler {
     const { fileName, summary, keyPoints, actionItems, topics, sentiment, metadata } = audioData;
     const displayName = customName || fileName.replace(/\.[^/.]+$/, ''); // Remove file extension
 
+    const properties = {
+      // Name property (matches your database)
+      'Name': {
+        title: [
+          {
+            type: 'text',
+            text: {
+              content: displayName
+            }
+          }
+        ]
+      },
+      // Main Entry property (matches your database)
+      'Main Entry': {
+        rich_text: [
+          {
+            type: 'text',
+            text: {
+              content: summary || 'No summary available'
+            }
+          }
+        ]
+      }
+    };
+
+    // Add Manual Name Input if it exists in the schema
+    if (customName) {
+      properties['Manual Name Input'] = {
+        rich_text: [
+          {
+            type: 'text',
+            text: {
+              content: displayName
+            }
+          }
+        ]
+      };
+    }
+
+    // Add Audio Log property to mark as processed
+    properties['Audio Log'] = {
+      checkbox: true
+    };
+
     return {
       parent: {
         database_id: this.databaseId
       },
-      properties: {
-        // Name property (matches your database)
-        'Name': {
-          title: [
-            {
-              type: 'text',
-              text: {
-                content: displayName
-              }
-            }
-          ]
-        },
-        'Manual Name Input': {
-          title: [
-            {
-              type: 'text',
-              text: {
-                content: displayName
-              }
-            }
-          ]
-        },
-        // Main Entry property (matches your database)
-        'Main Entry': {
-          rich_text: [
-            {
-              type: 'text',
-              text: {
-                content: summary || 'No summary available'
-              }
-            }
-          ]
-        }
-      },
-
+      properties: properties,
       // Add all content as formatted blocks
       children: this.buildContentBlocks(audioData, customName)
     };
@@ -293,6 +303,9 @@ class NotionHandler {
         return [];
       }
 
+      // Search by the filename without extension
+      const searchName = fileName.replace(/\.[^/.]+$/, '');
+      
       const response = await axios({
         method: 'POST',
         url: `${this.baseURL}/databases/${this.databaseId}/query`,
@@ -301,16 +314,34 @@ class NotionHandler {
           filter: {
             property: titleProperty.name,
             [titleProperty.type]: {
-              equals: fileName.replace(/\.[^/.]+$/, '') // Remove file extension to match title
+              equals: searchName
             }
           }
         }
       });
 
+      logger.info(`Found ${response.data.results.length} existing pages for "${searchName}"`);
       return response.data.results;
     } catch (error) {
       logger.error(`Failed to search for file ${fileName}:`, error.response?.data || error.message);
-      throw error;
+      return []; // Return empty array on error to allow processing
+    }
+  }
+
+  // Check if file has already been processed (exists in Notion)
+  async isFileAlreadyProcessed(fileName) {
+    try {
+      const existingPages = await this.searchByFileName(fileName);
+      const isProcessed = existingPages.length > 0;
+      
+      if (isProcessed) {
+        logger.info(`File ${fileName} already exists in Notion database`);
+      }
+      
+      return isProcessed;
+    } catch (error) {
+      logger.error(`Error checking if file ${fileName} is processed:`, error.message);
+      return false; // On error, assume not processed to allow retry
     }
   }
 
@@ -411,14 +442,17 @@ class NotionHandler {
   }
 
   // Create or update page (handles both cases)
-  async createOrUpdatePage(audioData, customName = null) {
+  async createOrUpdatePage(audioData, customName = null, forceUpdate = false) {
     try {
       // Check if page already exists
       const existingPages = await this.searchByFileName(audioData.fileName);
       
-      if (existingPages.length > 0) {
-        logger.info(`Updating existing page for: ${audioData.fileName}`);
+      if (existingPages.length > 0 && forceUpdate) {
+        logger.info(`Force updating existing page for: ${audioData.fileName}`);
         return await this.updatePage(existingPages[0].id, audioData, customName);
+      } else if (existingPages.length > 0) {
+        logger.info(`Page already exists for: ${audioData.fileName}, skipping creation`);
+        return existingPages[0]; // Return existing page
       } else {
         logger.info(`Creating new page for: ${audioData.fileName}`);
         return await this.createPage(audioData, customName);

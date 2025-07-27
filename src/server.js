@@ -139,6 +139,25 @@ class AutomationServer {
       }
     });
 
+    // Force reprocess file endpoint (even if it exists in Notion)
+    this.app.post('/force-reprocess-file', async (req, res) => {
+      try {
+        const { filePath, customName } = req.body;
+        
+        if (!filePath) {
+          return res.status(400).json({ error: 'filePath is required' });
+        }
+
+        logger.info('Force reprocess file requested', { filePath, customName });
+        
+        const result = await this.processFileManually(filePath, customName, true); // true = force reprocess
+        res.json(result);
+      } catch (error) {
+        logger.error('Force reprocess error', { error: error.message });
+        res.status(500).json({ error: error.message });
+      }
+    });
+
     // System status endpoint
     this.app.get('/status', async (req, res) => {
       try {
@@ -188,8 +207,34 @@ class AutomationServer {
         return;
       }
 
-      // Step 3: Process each valid file
+      // Step 3: Check which files haven't been processed yet
+      const unprocessedFiles = [];
       for (const file of validFiles) {
+        try {
+          const alreadyProcessed = await this.notionHandler.isFileAlreadyProcessed(file.fileName);
+          if (!alreadyProcessed) {
+            unprocessedFiles.push(file);
+          } else {
+            logger.info(`Skipping ${file.fileName}: already processed in Notion`);
+            // Clean up the downloaded file since we won't process it
+            await this.dropboxHandler.cleanupFile(file.localPath);
+          }
+        } catch (error) {
+          logger.error(`Error checking processing status for ${file.fileName}:`, error.message);
+          // On error, include the file for processing to be safe
+          unprocessedFiles.push(file);
+        }
+      }
+
+      if (unprocessedFiles.length === 0) {
+        logger.info('All files have already been processed');
+        return;
+      }
+
+      logger.info(`Processing ${unprocessedFiles.length} unprocessed files`);
+
+      // Step 4: Process each unprocessed file
+      for (const file of unprocessedFiles) {
         try {
           await this.processFile(file);
         } catch (error) {
@@ -205,9 +250,9 @@ class AutomationServer {
   }
 
   // Process a single file through the entire pipeline
-  async processFile(file, customName = null) {
+  async processFile(file, customName = null, forceReprocess = false) {
     try {
-      logger.info(`Processing file: ${file.fileName}`);
+      logger.info(`Processing file: ${file.fileName}${forceReprocess ? ' (force reprocess)' : ''}`);
       
       // Validate file has a local path
       if (!file.localPath) {
@@ -232,7 +277,7 @@ class AutomationServer {
       }
 
       // Step 2: Create Notion page with custom name if provided
-      const notionPage = await this.notionHandler.createOrUpdatePage(audioData, customName);
+      const notionPage = await this.notionHandler.createOrUpdatePage(audioData, customName, forceReprocess);
 
       // Step 3: Clean up temporary file
       await this.dropboxHandler.cleanupFile(file.localPath);
@@ -265,7 +310,7 @@ class AutomationServer {
   }
 
   // Manual file processing
-  async processFileManually(filePath, customName) {
+  async processFileManually(filePath, customName, forceReprocess = false) {
     try {
       // Get file metadata from Dropbox
       const metadata = await this.dropboxHandler.getFileMetadata(filePath);
@@ -279,11 +324,19 @@ class AutomationServer {
         modified: metadata.server_modified
       };
 
+      // Check if file already exists in Notion (unless force reprocessing)
+      if (!forceReprocess) {
+        const alreadyProcessed = await this.notionHandler.isFileAlreadyProcessed(file.fileName);
+        if (alreadyProcessed) {
+          throw new Error(`File ${file.fileName} has already been processed. Use force-reprocess-file endpoint to reprocess.`);
+        }
+      }
+
       // Download the file
       file.localPath = await this.dropboxHandler.downloadFile(filePath, file.fileName);
       
       // Process through pipeline
-      return await this.processFile(file, customName);
+      return await this.processFile(file, customName, forceReprocess);
       
     } catch (error) {
       logger.error(`Manual file processing failed for ${filePath}:`, error);

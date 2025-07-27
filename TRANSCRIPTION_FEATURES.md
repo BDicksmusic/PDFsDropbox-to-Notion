@@ -77,6 +77,15 @@ Use the `SUMMARY_PROMPT` environment variable for custom summary prompts.
    }
    ```
 
+3. **Force Reprocess (Update Existing)**
+   ```
+   POST /force-reprocess-file
+   {
+     "filePath": "/path/to/file.m4a",
+     "customName": "Optional Custom Name"
+   }
+   ```
+
 ### Benefits
 - Use descriptive names instead of file names
 - Better organization in Notion
@@ -84,12 +93,24 @@ Use the `SUMMARY_PROMPT` environment variable for custom summary prompts.
 
 ## Duplicate Prevention
 
-The system now includes robust duplicate prevention:
+The system now uses the Notion database itself as the source of truth for processed files:
 
-- **File Tracking**: Maintains a list of processed files
-- **Processing State**: Tracks files currently being processed
+- **Database-Based Tracking**: Checks Notion database for existing pages before processing
+- **Audio Log Property**: Sets the "Audio Log" checkbox to true for processed files
+- **Smart Skipping**: Automatically skips files that already exist in Notion
 - **Error Recovery**: Failed files can be retried without creating duplicates
 - **Webhook Handling**: Prevents duplicate processing from multiple webhook events
+
+### How It Works
+
+1. **File Discovery**: System finds all files in Dropbox folder
+2. **Existence Check**: Queries Notion database for existing pages with the same name
+3. **Smart Processing**: Only processes files that don't already exist in Notion
+4. **Cleanup**: Automatically cleans up downloaded files that were skipped
+
+### Audio Log Property
+
+The system automatically sets the "Audio Log" checkbox property to `true` for all processed files. This serves as a visual indicator in your Notion database that the file has been processed by the automation system.
 
 ## Error Handling Improvements
 
