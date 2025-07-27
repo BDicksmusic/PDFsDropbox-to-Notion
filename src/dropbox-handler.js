@@ -96,6 +96,14 @@ class DropboxHandler {
       return null;
     }
 
+    // Get shareable URL for the file
+    let shareableUrl = null;
+    try {
+      shareableUrl = await this.getShareableUrl(filePath);
+    } catch (error) {
+      logger.warn(`Failed to get shareable URL for ${fileName}:`, error.message);
+    }
+
     // Download file
     try {
       const localFilePath = await this.downloadFile(filePath, fileName);
@@ -105,11 +113,70 @@ class DropboxHandler {
         fileName: fileName,
         localPath: localFilePath,
         size: fileEntry.size,
-        modified: fileEntry.server_modified
+        modified: fileEntry.server_modified,
+        shareableUrl: shareableUrl
       };
     } catch (error) {
       logger.error(`Failed to download file ${fileName}:`, error.message);
       return null;
+    }
+  }
+
+  // Get shareable URL for a file
+  async getShareableUrl(filePath) {
+    try {
+      logger.info(`Getting shareable URL for: ${filePath}`);
+
+      const response = await axios({
+        method: 'POST',
+        url: 'https://api.dropboxapi.com/2/sharing/create_shared_link_with_settings',
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        data: {
+          path: filePath,
+          settings: {
+            requested_visibility: 'public',
+            audience: 'public',
+            access: 'viewer'
+          }
+        }
+      });
+
+      logger.info(`Successfully created shareable URL for: ${filePath}`);
+      return response.data.url;
+
+    } catch (error) {
+      // If link already exists, get existing link
+      if (error.response?.data?.error?.['.tag'] === 'shared_link_already_exists') {
+        try {
+          logger.info(`Shared link already exists for ${filePath}, retrieving existing link`);
+          
+          const existingResponse = await axios({
+            method: 'POST',
+            url: 'https://api.dropboxapi.com/2/sharing/list_shared_links',
+            headers: {
+              'Authorization': `Bearer ${this.accessToken}`,
+              'Content-Type': 'application/json'
+            },
+            data: {
+              path: filePath,
+              direct_only: true
+            }
+          });
+
+          if (existingResponse.data.links && existingResponse.data.links.length > 0) {
+            logger.info(`Retrieved existing shareable URL for: ${filePath}`);
+            return existingResponse.data.links[0].url;
+          }
+        } catch (retrieveError) {
+          logger.error(`Failed to retrieve existing shareable URL for ${filePath}:`, retrieveError.message);
+        }
+      }
+      
+      logger.error(`Failed to get shareable URL for ${filePath}:`, error.response?.data || error.message);
+      throw error;
     }
   }
 

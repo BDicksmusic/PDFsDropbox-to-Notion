@@ -44,7 +44,7 @@ class NotionHandler {
 
   // Build the page data structure for Notion
   buildPageData(audioData, customName = null) {
-    const { fileName, summary, keyPoints, actionItems, topics, sentiment, metadata } = audioData;
+    const { fileName, summary, keyPoints, actionItems, topics, sentiment, metadata, shareableUrl } = audioData;
     const displayName = customName || fileName.replace(/\.[^/.]+$/, ''); // Remove file extension
 
     const properties = {
@@ -81,6 +81,13 @@ class NotionHandler {
         ]
       }
     };
+
+    // Add URL property with Dropbox shareable link
+    if (shareableUrl) {
+      properties['URL'] = {
+        url: shareableUrl
+      };
+    }
 
     // Add Audio Log property to mark as processed
     properties['Audio Log?'] = {
@@ -287,6 +294,60 @@ class NotionHandler {
     }
   }
 
+  // Search for existing pages by Dropbox URL
+  async searchByDropboxUrl(shareableUrl) {
+    try {
+      if (!shareableUrl) {
+        logger.warn('No shareable URL provided for search');
+        return [];
+      }
+
+      logger.info(`Searching for existing page with Dropbox URL: ${shareableUrl}`);
+      
+      const response = await axios({
+        method: 'POST',
+        url: `${this.baseURL}/databases/${this.databaseId}/query`,
+        headers: this.getHeaders(),
+        data: {
+          filter: {
+            property: 'URL',
+            url: {
+              equals: shareableUrl
+            }
+          }
+        }
+      });
+
+      logger.info(`Found ${response.data.results.length} existing pages for URL: ${shareableUrl}`);
+      return response.data.results;
+    } catch (error) {
+      logger.error(`Failed to search for URL ${shareableUrl}:`, error.response?.data || error.message);
+      return []; // Return empty array on error to allow processing
+    }
+  }
+
+  // Check if file has already been processed using Dropbox URL
+  async isFileAlreadyProcessedByUrl(shareableUrl) {
+    try {
+      if (!shareableUrl) {
+        logger.warn('No shareable URL provided, falling back to filename check');
+        return false;
+      }
+
+      const existingPages = await this.searchByDropboxUrl(shareableUrl);
+      const isProcessed = existingPages.length > 0;
+      
+      if (isProcessed) {
+        logger.info(`File with URL ${shareableUrl} already exists in Notion database`);
+      }
+      
+      return isProcessed;
+    } catch (error) {
+      logger.error(`Error checking if file with URL ${shareableUrl} is processed:`, error.message);
+      return false; // On error, assume not processed to allow retry
+    }
+  }
+
   // Search for existing pages by file name
   async searchByFileName(fileName) {
     try {
@@ -324,7 +385,7 @@ class NotionHandler {
     }
   }
 
-  // Check if file has already been processed (exists in Notion)
+  // Check if file has already been processed (exists in Notion) - keeps for backward compatibility
   async isFileAlreadyProcessed(fileName) {
     try {
       const existingPages = await this.searchByFileName(fileName);
@@ -437,11 +498,23 @@ class NotionHandler {
     }
   }
 
-  // Create or update page (handles both cases)
+  // Create or update page (handles both cases) - now with URL-based tracking
   async createOrUpdatePage(audioData, customName = null, forceUpdate = false) {
     try {
-      // Check if page already exists
-      const existingPages = await this.searchByFileName(audioData.fileName);
+      let existingPages = [];
+      
+      // Primary check: search by Dropbox URL if available
+      if (audioData.shareableUrl) {
+        existingPages = await this.searchByDropboxUrl(audioData.shareableUrl);
+        logger.info(`URL-based search found ${existingPages.length} existing pages`);
+      }
+      
+      // Fallback: search by filename if no URL or no results from URL search
+      if (existingPages.length === 0) {
+        logger.info('Falling back to filename-based search');
+        existingPages = await this.searchByFileName(audioData.fileName);
+        logger.info(`Filename-based search found ${existingPages.length} existing pages`);
+      }
       
       if (existingPages.length > 0 && forceUpdate) {
         logger.info(`Force updating existing page for: ${audioData.fileName}`);

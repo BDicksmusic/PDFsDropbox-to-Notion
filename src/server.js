@@ -211,7 +211,18 @@ class AutomationServer {
       const unprocessedFiles = [];
       for (const file of validFiles) {
         try {
-          const alreadyProcessed = await this.notionHandler.isFileAlreadyProcessed(file.fileName);
+          // Use URL-based tracking if available, fallback to filename
+          let alreadyProcessed = false;
+          
+          if (file.shareableUrl) {
+            alreadyProcessed = await this.notionHandler.isFileAlreadyProcessedByUrl(file.shareableUrl);
+            logger.info(`URL-based check for ${file.fileName}: ${alreadyProcessed ? 'already processed' : 'new file'}`);
+          } else {
+            logger.warn(`No shareable URL for ${file.fileName}, falling back to filename check`);
+            alreadyProcessed = await this.notionHandler.isFileAlreadyProcessed(file.fileName);
+            logger.info(`Filename-based check for ${file.fileName}: ${alreadyProcessed ? 'already processed' : 'new file'}`);
+          }
+          
           if (!alreadyProcessed) {
             unprocessedFiles.push(file);
           } else {
@@ -315,18 +326,37 @@ class AutomationServer {
       // Get file metadata from Dropbox
       const metadata = await this.dropboxHandler.getFileMetadata(filePath);
       
+      // Get shareable URL for better tracking
+      let shareableUrl = null;
+      try {
+        shareableUrl = await this.dropboxHandler.getShareableUrl(filePath);
+      } catch (error) {
+        logger.warn(`Failed to get shareable URL for manual processing of ${filePath}:`, error.message);
+      }
+      
       // Process the file
       const file = {
         originalPath: filePath,
         fileName: customName || metadata.name, // Use customName if provided, otherwise original name
         localPath: null,
         size: metadata.size,
-        modified: metadata.server_modified
+        modified: metadata.server_modified,
+        shareableUrl: shareableUrl
       };
 
       // Check if file already exists in Notion (unless force reprocessing)
       if (!forceReprocess) {
-        const alreadyProcessed = await this.notionHandler.isFileAlreadyProcessed(file.fileName);
+        let alreadyProcessed = false;
+        
+        if (shareableUrl) {
+          alreadyProcessed = await this.notionHandler.isFileAlreadyProcessedByUrl(shareableUrl);
+          logger.info(`Manual processing URL-based check: ${alreadyProcessed ? 'already processed' : 'new file'}`);
+        } else {
+          logger.warn(`No shareable URL for manual processing, falling back to filename check`);
+          alreadyProcessed = await this.notionHandler.isFileAlreadyProcessed(file.fileName);
+          logger.info(`Manual processing filename-based check: ${alreadyProcessed ? 'already processed' : 'new file'}`);
+        }
+        
         if (alreadyProcessed) {
           throw new Error(`File ${file.fileName} has already been processed. Use force-reprocess-file endpoint to reprocess.`);
         }
