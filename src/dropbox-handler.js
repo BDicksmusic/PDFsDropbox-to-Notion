@@ -56,17 +56,19 @@ class DropboxHandler {
 
       logger.info(`Found ${newFiles.length} files in monitored folder`);
 
-      const processedFiles = [];
-      for (const file of newFiles) {
-        try {
-          const processedFile = await this.processFile(file);
-          if (processedFile) {
-            processedFiles.push(processedFile);
-          }
-        } catch (error) {
-          logger.error(`Failed to process file ${file.path_lower}:`, error.message);
-        }
-      }
+             const processedFiles = [];
+       for (const file of newFiles) {
+         try {
+           const processedFile = await this.processFile(file);
+           if (processedFile) {
+             processedFiles.push(processedFile);
+           } else {
+             logger.warn(`Skipping file ${file.path_lower}: download or processing failed`);
+           }
+         } catch (error) {
+           logger.error(`Failed to process file ${file.path_lower}:`, error.message);
+         }
+       }
 
       return processedFiles;
     } catch (error) {
@@ -96,15 +98,20 @@ class DropboxHandler {
     }
 
     // Download file
-    const localFilePath = await this.downloadFile(filePath, fileName);
-    
-    return {
-      originalPath: filePath,
-      fileName: fileName,
-      localPath: localFilePath,
-      size: fileEntry.size,
-      modified: fileEntry.server_modified
-    };
+    try {
+      const localFilePath = await this.downloadFile(filePath, fileName);
+      
+      return {
+        originalPath: filePath,
+        fileName: fileName,
+        localPath: localFilePath,
+        size: fileEntry.size,
+        modified: fileEntry.server_modified
+      };
+    } catch (error) {
+      logger.error(`Failed to download file ${fileName}:`, error.message);
+      return null; // Return null to indicate download failure
+    }
   }
 
   // Download file from Dropbox
