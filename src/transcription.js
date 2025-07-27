@@ -369,7 +369,7 @@ Format your response as valid JSON with these fields:
         model: config.transcription.summaryModel,
         messages: [{
           role: 'user',
-          content: `Please generate a concise, descriptive title for this audio transcript. The title should be 3-7 words long and capture the main topic or purpose of the conversation.
+          content: `Please generate a concise, descriptive title for this audio transcript. The title should be 2-7 words long and capture the main topic or purpose of the conversation.
 
 Transcript:
 ${truncatedTranscript}
@@ -379,7 +379,9 @@ Generate only the title, nothing else. Examples of good titles:
 - "Customer Support Call Resolution" 
 - "Marketing Strategy Discussion"
 - "Technical Architecture Review"
-- "Sales Pipeline Review Meeting"`
+- "Sales Pipeline Review Meeting"
+- "Audio Recording Test"
+- "Meeting Notes Discussion"`
         }],
         max_tokens: 50,
         temperature: 0.3
@@ -390,16 +392,19 @@ Generate only the title, nothing else. Examples of good titles:
       // Clean up the title - remove quotes and ensure it's reasonable length
       title = title.replace(/^["']|["']$/g, ''); // Remove surrounding quotes
       
-      // Ensure title is within word count limits
-      const words = title.split(' ');
-      if (words.length > 7) {
+      // Ensure title is within word count limits (2-7 words)
+      const words = title.split(' ').filter(word => word.length > 0);
+      if (words.length < 2) {
+        // If too short, add descriptive words
+        title = `Audio Recording ${fileName.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ')}`;
+      } else if (words.length > 7) {
         title = words.slice(0, 7).join(' ');
       }
       
-      // Fallback to filename-based title if generation failed
+      // Final validation - ensure we have a reasonable title
       if (!title || title.length < 3) {
         logger.warn(`Generated title too short, using fallback for ${fileName}`);
-        title = fileName.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
+        title = this.createFallbackTitle(fileName);
       }
 
       logger.info(`Generated title: "${title}" for ${fileName}`);
@@ -407,10 +412,25 @@ Generate only the title, nothing else. Examples of good titles:
 
     } catch (error) {
       logger.error(`Title generation failed for ${fileName}:`, error.message);
-      // Fallback to cleaned filename
-      const fallbackTitle = fileName.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
+      // Fallback to cleaned filename with descriptive prefix
+      const fallbackTitle = this.createFallbackTitle(fileName);
       logger.info(`Using fallback title: "${fallbackTitle}"`);
       return fallbackTitle;
+    }
+  }
+
+  // Create a fallback title that's always 2-7 words
+  createFallbackTitle(fileName) {
+    const cleanName = fileName.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
+    const words = cleanName.split(' ').filter(word => word.length > 0);
+    
+    if (words.length >= 2 && words.length <= 7) {
+      return words.join(' ');
+    } else if (words.length > 7) {
+      return words.slice(0, 7).join(' ');
+    } else {
+      // If filename is too short, add descriptive words
+      return `Audio Recording ${cleanName}`;
     }
   }
 }
