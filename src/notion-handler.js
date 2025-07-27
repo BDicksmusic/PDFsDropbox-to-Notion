@@ -55,7 +55,7 @@ class NotionHandler {
           {
             type: 'text',
             text: {
-              content: displayName
+              content: generatedTitle
             }
           }
         ]
@@ -65,7 +65,7 @@ class NotionHandler {
           {
             type: 'text',
             text: {
-              content: displayName
+              content: generatedTitle
             }
           }
         ]
