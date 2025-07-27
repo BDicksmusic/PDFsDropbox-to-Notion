@@ -4,7 +4,7 @@ const fsPromises = require('fs').promises;
 const path = require('path');
 const crypto = require('crypto');
 const config = require('../config/config');
-const { logger, ensureTempDir, cleanupTempFile, isValidAudioFormat, isValidFileSize } = require('./utils');
+const { logger, ensureTempDir, cleanupTempFile, isValidAudioFormat, isValidFileSize, sanitizeFilename } = require('./utils');
 
 class DropboxHandler {
   constructor() {
@@ -142,8 +142,22 @@ class DropboxHandler {
 
       logger.info(`Found ${allFiles.length} total files in monitored folder`);
 
+      // Filter for files that were modified recently (within the last 5 minutes)
+      // This prevents processing old files on every webhook
+      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+      const recentFiles = allFiles.filter(file => {
+        const modifiedTime = new Date(file.server_modified);
+        const isRecent = modifiedTime > fiveMinutesAgo;
+        if (!isRecent) {
+          logger.debug(`Skipping old file ${file.path_lower}: modified ${modifiedTime.toISOString()}`);
+        }
+        return isRecent;
+      });
+
+      logger.info(`Found ${recentFiles.length} recently modified files (within last 5 minutes)`);
+
       const processedFiles = [];
-      for (const file of allFiles) {
+      for (const file of recentFiles) {
         try {
           const processedFile = await this.processFile(file);
           if (processedFile) {
@@ -168,6 +182,7 @@ class DropboxHandler {
   async processFile(fileEntry) {
     const filePath = fileEntry.path_lower;
     const fileName = path.basename(filePath);
+    const sanitizedFileName = sanitizeFilename(fileName);
 
     logger.info(`Checking file: ${fileName}`);
 
@@ -183,6 +198,20 @@ class DropboxHandler {
       return null;
     }
 
+    // Check for problematic characters in filename
+    const problematicChars = /[<>:"/\\|?*\x00-\x1f]/g;
+    if (problematicChars.test(fileName)) {
+      logger.warn(`Skipping file ${fileName}: contains problematic characters for file system`);
+      return null;
+    }
+
+    // Check for special characters in the full path that might cause API issues
+    if (/[^\x00-\x7F]/.test(filePath)) {
+      logger.warn(`Skipping file ${fileName}: path contains special characters that may cause API issues`);
+      logger.warn(`Problematic path: ${filePath}`);
+      return null;
+    }
+
     // Get shareable URL for the file
     let shareableUrl = null;
     try {
@@ -195,11 +224,12 @@ class DropboxHandler {
 
     // Download file
     try {
-      const localFilePath = await this.downloadFile(filePath, fileName);
+      const localFilePath = await this.downloadFile(filePath, sanitizedFileName);
       
       return {
         originalPath: filePath,
         fileName: fileName,
+        sanitizedFileName: sanitizedFileName,
         localPath: localFilePath,
         size: fileEntry.size,
         modified: fileEntry.server_modified,
@@ -276,13 +306,32 @@ class DropboxHandler {
       
       logger.info(`Downloading file from Dropbox: ${dropboxPath}`);
 
+      // Handle special characters in the file path
+      // Dropbox API expects the path to be properly formatted
+      let safePath = dropboxPath;
+      
+      // If the path contains special characters, try to encode them
+      if (/[^\x00-\x7F]/.test(dropboxPath)) {
+        logger.warn(`File path contains special characters: ${dropboxPath}`);
+        // For now, we'll skip files with problematic characters
+        throw new Error(`File path contains special characters that cannot be processed: ${dropboxPath}`);
+      }
+
+      // Ensure the Dropbox-API-Arg header is properly formatted
+      const dropboxApiArg = {
+        path: safePath
+      };
+
+      // Convert to JSON string and ensure it's properly encoded
+      const headerValue = JSON.stringify(dropboxApiArg);
+      
+      logger.info(`Dropbox-API-Arg header value: ${headerValue}`);
+
       const response = await this.makeAuthenticatedRequest({
         method: 'POST',
         url: 'https://content.dropboxapi.com/2/files/download',
         headers: {
-          'Dropbox-API-Arg': JSON.stringify({
-            path: dropboxPath
-          }),
+          'Dropbox-API-Arg': headerValue,
           'Content-Type': 'application/octet-stream'
         },
         responseType: 'stream'
@@ -305,6 +354,19 @@ class DropboxHandler {
     } catch (error) {
       logger.error(`Failed to download file ${dropboxPath}:`, error.message);
       logger.error(`Download error details:`, error.response?.data || error);
+      
+      // Add more specific error handling for header issues
+      if (error.message.includes('Invalid character in header content')) {
+        logger.error('Header encoding issue detected. This may be due to special characters in the file path.');
+        logger.error('File path:', dropboxPath);
+        logger.error('File name:', fileName);
+        logger.error('Try renaming the file to remove special characters.');
+        
+        // Try to suggest a sanitized version
+        const sanitizedPath = dropboxPath.replace(/[^\x00-\x7F]/g, '');
+        logger.error('Sanitized path suggestion:', sanitizedPath);
+      }
+      
       throw error;
     }
   }

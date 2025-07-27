@@ -93,6 +93,18 @@ class NotionHandler {
       checkbox: true
     };
 
+    // Add Status property with 📥 emoji
+    properties['Status'] = {
+      rich_text: [
+        {
+          type: 'text',
+          text: {
+            content: '📥'
+          }
+        }
+      ]
+    };
+
     return {
       parent: {
         database_id: this.databaseId

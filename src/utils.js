@@ -108,6 +108,17 @@ function estimateCost(inputTokens, outputTokens = 0, model = 'gpt-3.5-turbo') {
   return inputCost + outputCost;
 }
 
+// Sanitize filename for safe file system operations
+function sanitizeFilename(filename) {
+  // Remove or replace problematic characters
+  return filename
+    .replace(/[<>:"/\\|?*]/g, '_') // Replace problematic chars with underscore
+    .replace(/[\x00-\x1f]/g, '')   // Remove control characters
+    .replace(/\s+/g, '_')          // Replace spaces with underscores
+    .replace(/_{2,}/g, '_')        // Replace multiple underscores with single
+    .replace(/^_+|_+$/g, '');      // Remove leading/trailing underscores
+}
+
 module.exports = {
   logger,
   ensureTempDir,
@@ -117,5 +128,6 @@ module.exports = {
   generateUniqueFilename,
   extractFileInfo,
   formatDuration,
-  estimateCost
+  estimateCost,
+  sanitizeFilename
 }; 
