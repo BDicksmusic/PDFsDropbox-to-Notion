@@ -93,17 +93,8 @@ class NotionHandler {
       checkbox: true
     };
 
-    // Add Status property with 📥 emoji
-    properties['Status'] = {
-      rich_text: [
-        {
-          type: 'text',
-          text: {
-            content: '📥'
-          }
-        }
-      ]
-    };
+    // Add Status property with 📥 emoji (auto-detect field type)
+    properties['Status'] = await this.buildStatusProperty('📥');
 
     return {
       parent: {
@@ -161,6 +152,61 @@ class NotionHandler {
             type: 'text',
             text: {
               content: shareableUrl
+            }
+          }
+        ]
+      };
+    }
+  }
+
+  // Build Status property based on field type
+  async buildStatusProperty(statusValue) {
+    try {
+      // Get database schema to determine Status field type
+      const schema = await this.getDatabaseSchema();
+      const statusProperty = schema.Status;
+      
+      if (!statusProperty) {
+        logger.warn('No Status property found in database schema, defaulting to rich_text');
+        // Default to rich_text format
+        return {
+          rich_text: [
+            {
+              type: 'text',
+              text: {
+                content: statusValue
+              }
+            }
+          ]
+        };
+      }
+
+      if (statusProperty.type === 'status') {
+        return { status: { name: statusValue } };
+      } else if (statusProperty.type === 'select') {
+        return { select: { name: statusValue } };
+      } else {
+        // Default to rich_text for any other type
+        return {
+          rich_text: [
+            {
+              type: 'text',
+              text: {
+                content: statusValue
+              }
+            }
+          ]
+        };
+      }
+    } catch (error) {
+      logger.warn(`Error building Status property, defaulting to rich_text:`, error.message);
+      // Fallback to rich_text format
+      return {
+        rich_text: [
+          {
+            type: 'text',
+            text: {
+              content: statusValue
             }
           }
         ]
