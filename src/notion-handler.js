@@ -50,13 +50,24 @@ class NotionHandler {
         database_id: this.databaseId
       },
       properties: {
-        // Title property (required)
-        'Title': {
+        // Name property (matches your database)
+        'Name': {
           title: [
             {
               type: 'text',
               text: {
                 content: fileName.replace(/\.[^/.]+$/, '') // Remove file extension
+              }
+            }
+          ]
+        },
+        // Main Entry property (matches your database)
+        'Main Entry': {
+          rich_text: [
+            {
+              type: 'text',
+              text: {
+                content: summary || 'No summary available'
               }
             }
           ]
@@ -260,14 +271,23 @@ class NotionHandler {
   // Search for existing pages by file name
   async searchByFileName(fileName) {
     try {
+      // First, get the database schema to find the correct title property
+      const schema = await this.getDatabaseSchema();
+      const titleProperty = this.findTitleProperty(schema);
+      
+      if (!titleProperty) {
+        logger.warn('No title property found in database, skipping search');
+        return [];
+      }
+
       const response = await axios({
         method: 'POST',
         url: `${this.baseURL}/databases/${this.databaseId}/query`,
         headers: this.getHeaders(),
         data: {
           filter: {
-            property: 'Title',
-            title: {
+            property: titleProperty.name,
+            [titleProperty.type]: {
               equals: fileName.replace(/\.[^/.]+$/, '') // Remove file extension to match title
             }
           }
@@ -279,6 +299,26 @@ class NotionHandler {
       logger.error(`Failed to search for file ${fileName}:`, error.response?.data || error.message);
       throw error;
     }
+  }
+
+  // Find the title property in the database schema
+  findTitleProperty(schema) {
+    // Look for common title property names
+    const titleNames = ['Name', 'Title', 'Page', 'File Name', 'Recording Name'];
+    
+    for (const [propertyName, property] of Object.entries(schema)) {
+      if (titleNames.includes(propertyName) || propertyName.toLowerCase().includes('title')) {
+        return { name: propertyName, type: property.type };
+      }
+    }
+    
+    // If no title property found, return the first property (usually required)
+    const firstProperty = Object.entries(schema)[0];
+    if (firstProperty) {
+      return { name: firstProperty[0], type: firstProperty[1].type };
+    }
+    
+    return null;
   }
 
   // Update existing page
