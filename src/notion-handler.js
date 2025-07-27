@@ -24,7 +24,7 @@ class NotionHandler {
       const displayName = customName || audioData.fileName;
       logger.info(`Creating Notion page for: ${displayName}`);
 
-      const pageData = this.buildPageData(audioData, customName);
+      const pageData = await this.buildPageData(audioData, customName);
       
       const response = await axios({
         method: 'POST',
@@ -43,7 +43,7 @@ class NotionHandler {
   }
 
   // Build the page data structure for Notion
-  buildPageData(audioData, customName = null) {
+  async buildPageData(audioData, customName = null) {
     const { fileName, summary, keyPoints, actionItems, topics, sentiment, metadata, shareableUrl } = audioData;
     const displayName = customName || fileName.replace(/\.[^/.]+$/, ''); // Remove file extension
 
@@ -82,11 +82,9 @@ class NotionHandler {
       }
     };
 
-    // Add URL property with Dropbox shareable link
+    // Add URL property with Dropbox shareable link (auto-detect field type)
     if (shareableUrl) {
-      properties['URL'] = {
-        url: shareableUrl
-      };
+      properties['URL'] = await this.buildUrlProperty(shareableUrl);
     }
 
     // Add Audio Log property to mark as processed
@@ -102,6 +100,59 @@ class NotionHandler {
       // Add all content as formatted blocks
       children: this.buildContentBlocks(audioData, customName)
     };
+  }
+
+  // Build URL property based on field type
+  async buildUrlProperty(shareableUrl) {
+    try {
+      // Get database schema to determine URL field type
+      const schema = await this.getDatabaseSchema();
+      const urlProperty = schema.URL;
+      
+      if (!urlProperty) {
+        logger.warn('No URL property found in database schema, defaulting to rich_text');
+        // Default to rich_text format
+        return {
+          rich_text: [
+            {
+              type: 'text',
+              text: {
+                content: shareableUrl
+              }
+            }
+          ]
+        };
+      }
+
+      if (urlProperty.type === 'url') {
+        return { url: shareableUrl };
+      } else {
+        // Default to rich_text for any other type
+        return {
+          rich_text: [
+            {
+              type: 'text',
+              text: {
+                content: shareableUrl
+              }
+            }
+          ]
+        };
+      }
+    } catch (error) {
+      logger.warn(`Error building URL property, defaulting to rich_text:`, error.message);
+      // Fallback to rich_text format
+      return {
+        rich_text: [
+          {
+            type: 'text',
+            text: {
+              content: shareableUrl
+            }
+          }
+        ]
+      };
+    }
   }
 
   // Build formatted content blocks for the page
@@ -311,18 +362,84 @@ class NotionHandler {
         data: {
           filter: {
             property: 'URL',
-            url: {
-              equals: shareableUrl
+            rich_text: {
+              contains: shareableUrl
             }
           }
         }
       });
 
-      logger.info(`Found ${response.data.results.length} existing pages for URL: ${shareableUrl}`);
-      return response.data.results;
+      // Filter results to find exact matches since 'contains' might return partial matches
+      const exactMatches = response.data.results.filter(page => {
+        const urlProperty = page.properties.URL;
+        if (urlProperty && urlProperty.rich_text && urlProperty.rich_text.length > 0) {
+          const urlText = urlProperty.rich_text[0].text.content;
+          return urlText === shareableUrl;
+        }
+        return false;
+      });
+
+      logger.info(`Found ${response.data.results.length} pages containing URL, ${exactMatches.length} exact matches`);
+      return exactMatches;
     } catch (error) {
       logger.error(`Failed to search for URL ${shareableUrl}:`, error.response?.data || error.message);
       return []; // Return empty array on error to allow processing
+    }
+  }
+
+  // Auto-detect URL field type and search appropriately
+  async searchByDropboxUrlAuto(shareableUrl) {
+    try {
+      if (!shareableUrl) {
+        logger.warn('No shareable URL provided for auto search');
+        return [];
+      }
+
+      // Get database schema to determine URL field type
+      const schema = await this.getDatabaseSchema();
+      const urlProperty = schema.URL;
+      
+      if (!urlProperty) {
+        logger.warn('No URL property found in database schema');
+        return [];
+      }
+
+      logger.info(`URL field type detected: ${urlProperty.type}`);
+      
+      const response = await axios({
+        method: 'POST',
+        url: `${this.baseURL}/databases/${this.databaseId}/query`,
+        headers: this.getHeaders(),
+        data: {
+          filter: {
+            property: 'URL',
+            [urlProperty.type]: urlProperty.type === 'url' 
+              ? { equals: shareableUrl }
+              : { contains: shareableUrl }
+          }
+        }
+      });
+
+      let results = response.data.results;
+      
+      // If using rich_text, filter for exact matches
+      if (urlProperty.type === 'rich_text') {
+        results = results.filter(page => {
+          const urlProp = page.properties.URL;
+          if (urlProp && urlProp.rich_text && urlProp.rich_text.length > 0) {
+            const urlText = urlProp.rich_text[0].text.content;
+            return urlText === shareableUrl;
+          }
+          return false;
+        });
+      }
+
+      logger.info(`Auto-search found ${results.length} exact matches for URL`);
+      return results;
+    } catch (error) {
+      logger.error(`Auto URL search failed, falling back to standard search:`, error.message);
+      // Fallback to the standard rich text search
+      return await this.searchByDropboxUrl(shareableUrl);
     }
   }
 
@@ -334,7 +451,8 @@ class NotionHandler {
         return false;
       }
 
-      const existingPages = await this.searchByDropboxUrl(shareableUrl);
+      // Use auto-detection for more robust searching
+      const existingPages = await this.searchByDropboxUrlAuto(shareableUrl);
       const isProcessed = existingPages.length > 0;
       
       if (isProcessed) {
@@ -427,7 +545,7 @@ class NotionHandler {
     try {
       logger.info(`Updating Notion page: ${pageId}`);
 
-      const pageData = this.buildPageData(audioData, customName);
+      const pageData = await this.buildPageData(audioData, customName);
       
       // Update page properties
       const response = await axios({
@@ -505,7 +623,7 @@ class NotionHandler {
       
       // Primary check: search by Dropbox URL if available
       if (audioData.shareableUrl) {
-        existingPages = await this.searchByDropboxUrl(audioData.shareableUrl);
+        existingPages = await this.searchByDropboxUrlAuto(audioData.shareableUrl);
         logger.info(`URL-based search found ${existingPages.length} existing pages`);
       }
       

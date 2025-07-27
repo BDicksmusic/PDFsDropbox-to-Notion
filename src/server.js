@@ -287,6 +287,11 @@ class AutomationServer {
         throw new Error(`Transcription failed for ${file.fileName} - no audio data or summary generated`);
       }
 
+      // Add the shareableUrl to audioData for Notion processing
+      if (file.shareableUrl) {
+        audioData.shareableUrl = file.shareableUrl;
+      }
+
       // Step 2: Create Notion page with custom name if provided
       const notionPage = await this.notionHandler.createOrUpdatePage(audioData, customName, forceReprocess);
 
