@@ -31,7 +31,7 @@ class TranscriptionHandler {
 
       const transcription = await this.openai.audio.transcriptions.create({
         file: file,
-        model: 'whisper-1',
+        model: config.transcription.transcriptionModel,
         response_format: 'verbose_json',
         language: 'en'
       });
@@ -40,8 +40,15 @@ class TranscriptionHandler {
       logger.info(`Actual duration: ${formatDuration(transcription.duration)}`);
       logger.info(`Word count: ${transcription.text.split(' ').length}`);
 
+      // Auto-format the transcription if enabled
+      let formattedText = transcription.text;
+      if (config.transcription.autoFormat) {
+        formattedText = this.autoFormatTranscription(transcription.text);
+      }
+
       return {
-        text: transcription.text,
+        text: formattedText,
+        originalText: transcription.text, // Keep original for reference
         duration: transcription.duration,
         language: transcription.language,
         segments: transcription.segments || [],
@@ -52,6 +59,128 @@ class TranscriptionHandler {
       logger.error(`Transcription failed for ${path.basename(filePath)}:`, error.message);
       throw error;
     }
+  }
+
+  // Auto-format transcription with paragraphs and titles
+  autoFormatTranscription(text) {
+    if (!text || text.length < config.transcription.paragraphBreakThreshold) {
+      return text;
+    }
+
+    let formattedText = text;
+    
+    // Add paragraph breaks for natural speech patterns
+    formattedText = this.addParagraphBreaks(formattedText);
+    
+    // Add titles if enabled
+    if (config.transcription.addTitles) {
+      formattedText = this.addTitles(formattedText);
+    }
+
+    return formattedText;
+  }
+
+  // Add paragraph breaks based on natural speech patterns
+  addParagraphBreaks(text) {
+    // Split by sentences and group into paragraphs
+    const sentences = text.split(/(?<=[.!?])\s+/);
+    const paragraphs = [];
+    let currentParagraph = '';
+
+    for (let i = 0; i < sentences.length; i++) {
+      const sentence = sentences[i];
+      currentParagraph += sentence + ' ';
+
+      // Start new paragraph if:
+      // 1. Current paragraph is long enough
+      // 2. Next sentence starts with common paragraph transition words
+      // 3. We're at a natural break point
+      const shouldBreak = 
+        currentParagraph.length > config.transcription.paragraphBreakThreshold &&
+        (i === sentences.length - 1 || 
+         this.isParagraphTransition(sentences[i + 1]) ||
+         this.isNaturalBreak(sentence));
+
+      if (shouldBreak) {
+        paragraphs.push(currentParagraph.trim());
+        currentParagraph = '';
+      }
+    }
+
+    // Add any remaining text
+    if (currentParagraph.trim()) {
+      paragraphs.push(currentParagraph.trim());
+    }
+
+    return paragraphs.join('\n\n');
+  }
+
+  // Check if sentence indicates a paragraph transition
+  isParagraphTransition(sentence) {
+    if (!sentence) return false;
+    
+    const transitionWords = [
+      'now', 'so', 'well', 'okay', 'right', 'alright', 'anyway',
+      'moving on', 'next', 'first', 'second', 'third', 'finally',
+      'in addition', 'furthermore', 'moreover', 'however', 'but',
+      'on the other hand', 'meanwhile', 'later', 'earlier'
+    ];
+
+    const lowerSentence = sentence.toLowerCase();
+    return transitionWords.some(word => lowerSentence.startsWith(word));
+  }
+
+  // Check if sentence ends with a natural break
+  isNaturalBreak(sentence) {
+    if (!sentence) return false;
+    
+    // Natural breaks often end with certain punctuation or phrases
+    const naturalEndings = [
+      'you know', 'right', 'okay', 'so', 'well', 'anyway'
+    ];
+
+    const lowerSentence = sentence.toLowerCase();
+    return naturalEndings.some(ending => lowerSentence.endsWith(ending));
+  }
+
+  // Add titles to long transcriptions
+  addTitles(text) {
+    if (text.length < config.transcription.titleFrequency) {
+      return text;
+    }
+
+    const paragraphs = text.split('\n\n');
+    const titledParagraphs = [];
+    let characterCount = 0;
+
+    for (let i = 0; i < paragraphs.length; i++) {
+      const paragraph = paragraphs[i];
+      
+      // Add title every N characters
+      if (characterCount >= config.transcription.titleFrequency) {
+        const title = this.generateTitle(paragraph);
+        titledParagraphs.push(`## ${title}\n\n${paragraph}`);
+        characterCount = 0;
+      } else {
+        titledParagraphs.push(paragraph);
+      }
+      
+      characterCount += paragraph.length;
+    }
+
+    return titledParagraphs.join('\n\n');
+  }
+
+  // Generate a simple title based on paragraph content
+  generateTitle(paragraph) {
+    // Extract key words for title
+    const words = paragraph.split(' ').slice(0, 5); // First 5 words
+    const title = words.join(' ').replace(/[.!?]$/, ''); // Remove trailing punctuation
+    
+    // Capitalize first letter of each word
+    return title.split(' ').map(word => 
+      word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+    ).join(' ');
   }
 
   // Extract key points from transcript using GPT-3.5-turbo
@@ -67,7 +196,7 @@ class TranscriptionHandler {
       logger.info(`Estimated cost: $${estimatedCost.toFixed(4)}`);
 
       const completion = await this.openai.chat.completions.create({
-        model: 'gpt-3.5-turbo',
+        model: config.transcription.analysisModel,
         messages: [
           {
             role: 'system',
@@ -78,8 +207,8 @@ class TranscriptionHandler {
             content: prompt
           }
         ],
-        max_tokens: 500,
-        temperature: 0.3
+        max_tokens: config.transcription.maxTokens,
+        temperature: config.transcription.temperature
       });
 
       const response = completion.choices[0].message.content;
@@ -107,6 +236,11 @@ class TranscriptionHandler {
 
   // Build prompt for key points extraction
   buildKeyPointsPrompt(transcriptText) {
+    // Use custom prompt if configured, otherwise use default
+    if (config.transcription.keyPointsPrompt) {
+      return config.transcription.keyPointsPrompt.replace('{TRANSCRIPT}', transcriptText);
+    }
+
     return `Please analyze the following voice recording transcript and extract key information in a structured format:
 
 TRANSCRIPT:

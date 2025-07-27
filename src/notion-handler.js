@@ -19,11 +19,12 @@ class NotionHandler {
   }
 
   // Create a new page in the Notion database
-  async createPage(audioData) {
+  async createPage(audioData, customName = null) {
     try {
-      logger.info(`Creating Notion page for: ${audioData.fileName}`);
+      const displayName = customName || audioData.fileName;
+      logger.info(`Creating Notion page for: ${displayName}`);
 
-      const pageData = this.buildPageData(audioData);
+      const pageData = this.buildPageData(audioData, customName);
       
       const response = await axios({
         method: 'POST',
@@ -42,8 +43,9 @@ class NotionHandler {
   }
 
   // Build the page data structure for Notion
-  buildPageData(audioData) {
+  buildPageData(audioData, customName = null) {
     const { fileName, summary, keyPoints, actionItems, topics, sentiment, metadata } = audioData;
+    const displayName = customName || fileName.replace(/\.[^/.]+$/, ''); // Remove file extension
 
     return {
       parent: {
@@ -56,7 +58,17 @@ class NotionHandler {
             {
               type: 'text',
               text: {
-                content: fileName.replace(/\.[^/.]+$/, '') // Remove file extension
+                content: displayName
+              }
+            }
+          ]
+        },
+        'Manual Name Input': {
+          title: [
+            {
+              type: 'text',
+              text: {
+                content: displayName
               }
             }
           ]
@@ -75,13 +87,14 @@ class NotionHandler {
       },
 
       // Add all content as formatted blocks
-      children: this.buildContentBlocks(audioData)
+      children: this.buildContentBlocks(audioData, customName)
     };
   }
 
   // Build formatted content blocks for the page
-  buildContentBlocks(audioData) {
+  buildContentBlocks(audioData, customName = null) {
     const { fileName, summary, keyPoints, actionItems, topics, sentiment, metadata, originalText } = audioData;
+    const displayName = customName || fileName.replace(/\.[^/.]+$/, ''); // Remove file extension
     const blocks = [];
 
     // Summary section
@@ -184,7 +197,7 @@ class NotionHandler {
         type: 'paragraph',
         paragraph: {
           rich_text: [
-            { type: 'text', text: { content: `📁 File: ${fileName}` } },
+            { type: 'text', text: { content: `📁 File: ${displayName}` } },
             { type: 'text', text: { content: '\n' } },
             { type: 'text', text: { content: `⏱️ Duration: ${this.formatDuration(metadata?.duration || 0)}` } },
             { type: 'text', text: { content: '\n' } },
@@ -322,11 +335,11 @@ class NotionHandler {
   }
 
   // Update existing page
-  async updatePage(pageId, audioData) {
+  async updatePage(pageId, audioData, customName = null) {
     try {
       logger.info(`Updating Notion page: ${pageId}`);
 
-      const pageData = this.buildPageData(audioData);
+      const pageData = this.buildPageData(audioData, customName);
       
       // Update page properties
       const response = await axios({
@@ -398,17 +411,17 @@ class NotionHandler {
   }
 
   // Create or update page (handles both cases)
-  async createOrUpdatePage(audioData) {
+  async createOrUpdatePage(audioData, customName = null) {
     try {
       // Check if page already exists
       const existingPages = await this.searchByFileName(audioData.fileName);
       
       if (existingPages.length > 0) {
         logger.info(`Updating existing page for: ${audioData.fileName}`);
-        return await this.updatePage(existingPages[0].id, audioData);
+        return await this.updatePage(existingPages[0].id, audioData, customName);
       } else {
         logger.info(`Creating new page for: ${audioData.fileName}`);
-        return await this.createPage(audioData);
+        return await this.createPage(audioData, customName);
       }
 
     } catch (error) {

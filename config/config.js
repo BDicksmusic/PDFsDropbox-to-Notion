@@ -27,6 +27,24 @@ const config = {
     tempFolder: process.env.TEMPORARY_FOLDER || './temp'
   },
   
+  transcription: {
+    // Auto-formatting settings
+    autoFormat: process.env.AUTO_FORMAT_TRANSCRIPTION === 'true' || true,
+    addTitles: process.env.ADD_TITLES_TO_TRANSCRIPTION === 'true' || true,
+    paragraphBreakThreshold: parseInt(process.env.PARAGRAPH_BREAK_THRESHOLD) || 150, // characters
+    titleFrequency: parseInt(process.env.TITLE_FREQUENCY) || 1000, // characters between titles
+    
+    // Custom prompts
+    keyPointsPrompt: process.env.KEY_POINTS_PROMPT || null, // Use default if not set
+    summaryPrompt: process.env.SUMMARY_PROMPT || null, // Use default if not set
+    
+    // Model settings
+    transcriptionModel: process.env.TRANSCRIPTION_MODEL || 'whisper-1',
+    analysisModel: process.env.ANALYSIS_MODEL || 'gpt-3.5-turbo',
+    maxTokens: parseInt(process.env.MAX_TOKENS) || 500,
+    temperature: parseFloat(process.env.TEMPERATURE) || 0.3
+  },
+  
   logging: {
     level: process.env.LOG_LEVEL || 'info'
   }

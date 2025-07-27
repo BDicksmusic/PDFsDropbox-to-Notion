@@ -100,18 +100,41 @@ class AutomationServer {
     // Manual file processing endpoint
     this.app.post('/process-file', async (req, res) => {
       try {
-        const { filePath } = req.body;
+        const { filePath, customName } = req.body;
         
         if (!filePath) {
           return res.status(400).json({ error: 'filePath is required' });
         }
 
-        logger.info('Manual file processing requested', { filePath });
+        logger.info('Manual file processing requested', { filePath, customName });
         
-        const result = await this.processFileManually(filePath);
+        const result = await this.processFileManually(filePath, customName);
         res.json(result);
       } catch (error) {
         logger.error('Manual processing error', { error: error.message });
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // Manual file processing with custom name endpoint
+    this.app.post('/process-file-with-name', async (req, res) => {
+      try {
+        const { filePath, customName } = req.body;
+        
+        if (!filePath) {
+          return res.status(400).json({ error: 'filePath is required' });
+        }
+
+        if (!customName) {
+          return res.status(400).json({ error: 'customName is required for this endpoint' });
+        }
+
+        logger.info('Manual file processing with custom name requested', { filePath, customName });
+        
+        const result = await this.processFileManually(filePath, customName);
+        res.json(result);
+      } catch (error) {
+        logger.error('Manual processing with custom name error', { error: error.message });
         res.status(500).json({ error: error.message });
       }
     });
@@ -157,8 +180,16 @@ class AutomationServer {
         return;
       }
 
-      // Step 2: Process each file
-      for (const file of files) {
+      // Step 2: Filter out files that failed to download (null values)
+      const validFiles = files.filter(file => file !== null);
+      
+      if (validFiles.length === 0) {
+        logger.info('No valid files to process after download attempts');
+        return;
+      }
+
+      // Step 3: Process each valid file
+      for (const file of validFiles) {
         try {
           await this.processFile(file);
         } catch (error) {
@@ -174,9 +205,20 @@ class AutomationServer {
   }
 
   // Process a single file through the entire pipeline
-  async processFile(file) {
+  async processFile(file, customName = null) {
     try {
       logger.info(`Processing file: ${file.fileName}`);
+      
+      // Validate file has a local path
+      if (!file.localPath) {
+        throw new Error(`File ${file.fileName} has no local path - download may have failed`);
+      }
+
+      // Check if file actually exists before processing
+      const fs = require('fs');
+      if (!fs.existsSync(file.localPath)) {
+        throw new Error(`File ${file.fileName} does not exist at path: ${file.localPath}`);
+      }
       
       // Step 1: Transcribe and extract key points
       const audioData = await this.transcriptionHandler.processAudioFile(
@@ -184,8 +226,13 @@ class AutomationServer {
         file.fileName
       );
 
-      // Step 2: Create Notion page
-      const notionPage = await this.notionHandler.createOrUpdatePage(audioData);
+      // Only proceed to Notion if transcription was successful
+      if (!audioData || !audioData.summary) {
+        throw new Error(`Transcription failed for ${file.fileName} - no audio data or summary generated`);
+      }
+
+      // Step 2: Create Notion page with custom name if provided
+      const notionPage = await this.notionHandler.createOrUpdatePage(audioData, customName);
 
       // Step 3: Clean up temporary file
       await this.dropboxHandler.cleanupFile(file.localPath);
@@ -194,6 +241,7 @@ class AutomationServer {
       
       return {
         fileName: file.fileName,
+        customName: customName,
         notionPageId: notionPage.id,
         summary: audioData.summary,
         keyPoints: audioData.keyPoints,
@@ -205,7 +253,9 @@ class AutomationServer {
       
       // Clean up file even if processing failed
       try {
-        await this.dropboxHandler.cleanupFile(file.localPath);
+        if (file.localPath) {
+          await this.dropboxHandler.cleanupFile(file.localPath);
+        }
       } catch (cleanupError) {
         logger.warn(`Failed to cleanup file ${file.localPath}:`, cleanupError.message);
       }
@@ -215,7 +265,7 @@ class AutomationServer {
   }
 
   // Manual file processing
-  async processFileManually(filePath) {
+  async processFileManually(filePath, customName) {
     try {
       // Get file metadata from Dropbox
       const metadata = await this.dropboxHandler.getFileMetadata(filePath);
@@ -223,17 +273,17 @@ class AutomationServer {
       // Process the file
       const file = {
         originalPath: filePath,
-        fileName: metadata.name,
+        fileName: customName || metadata.name, // Use customName if provided, otherwise original name
         localPath: null,
         size: metadata.size,
         modified: metadata.server_modified
       };
 
       // Download the file
-      file.localPath = await this.dropboxHandler.downloadFile(filePath, metadata.name);
+      file.localPath = await this.dropboxHandler.downloadFile(filePath, file.fileName);
       
       // Process through pipeline
-      return await this.processFile(file);
+      return await this.processFile(file, customName);
       
     } catch (error) {
       logger.error(`Manual file processing failed for ${filePath}:`, error);

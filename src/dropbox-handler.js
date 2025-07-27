@@ -11,6 +11,8 @@ class DropboxHandler {
     this.accessToken = config.dropbox.accessToken;
     this.webhookSecret = config.dropbox.webhookSecret;
     this.folderPath = config.dropbox.folderPath;
+    this.processedFiles = new Set(); // Track processed files to prevent duplicates
+    this.processingFiles = new Set(); // Track files currently being processed
   }
 
   // Verify webhook signature
@@ -47,28 +49,38 @@ class DropboxHandler {
       
       const files = await this.listFiles();
       
-      // For now, process all files in the folder
-      // In a production system, you might want to track which files have been processed
+      // Filter for new files that haven't been processed yet
       const newFiles = files.filter(entry => 
         entry['.tag'] === 'file' && 
-        entry.path_lower.startsWith(this.folderPath.toLowerCase())
+        entry.path_lower.startsWith(this.folderPath.toLowerCase()) &&
+        !this.processedFiles.has(entry.path_lower) &&
+        !this.processingFiles.has(entry.path_lower)
       );
 
-      logger.info(`Found ${newFiles.length} files in monitored folder`);
+      logger.info(`Found ${newFiles.length} new files in monitored folder`);
 
-             const processedFiles = [];
-       for (const file of newFiles) {
-         try {
-           const processedFile = await this.processFile(file);
-           if (processedFile) {
-             processedFiles.push(processedFile);
-           } else {
-             logger.warn(`Skipping file ${file.path_lower}: download or processing failed`);
-           }
-         } catch (error) {
-           logger.error(`Failed to process file ${file.path_lower}:`, error.message);
-         }
-       }
+      const processedFiles = [];
+      for (const file of newFiles) {
+        try {
+          // Mark file as being processed
+          this.processingFiles.add(file.path_lower);
+          
+          const processedFile = await this.processFile(file);
+          if (processedFile) {
+            processedFiles.push(processedFile);
+            // Mark file as successfully processed
+            this.processedFiles.add(file.path_lower);
+          } else {
+            logger.warn(`Skipping file ${file.path_lower}: download or processing failed`);
+          }
+        } catch (error) {
+          logger.error(`Failed to process file ${file.path_lower}:`, error.message);
+          // Don't mark as processed if it failed
+        } finally {
+          // Always remove from processing set
+          this.processingFiles.delete(file.path_lower);
+        }
+      }
 
       return processedFiles;
     } catch (error) {
@@ -84,6 +96,18 @@ class DropboxHandler {
 
     logger.info(`Processing file: ${fileName}`);
     logger.info(`File path: ${filePath}, Folder path: ${this.folderPath}`);
+
+    // Check if file was already processed
+    if (this.processedFiles.has(filePath)) {
+      logger.info(`File ${fileName} already processed, skipping`);
+      return null;
+    }
+
+    // Check if file is currently being processed
+    if (this.processingFiles.has(filePath)) {
+      logger.info(`File ${fileName} is currently being processed, skipping`);
+      return null;
+    }
 
     // Validate file format
     if (!isValidAudioFormat(fileName)) {
@@ -123,18 +147,18 @@ class DropboxHandler {
       
       logger.info(`Downloading file from Dropbox: ${dropboxPath}`);
 
-             const response = await axios({
-         method: 'POST',
-         url: 'https://content.dropboxapi.com/2/files/download',
-         headers: {
-           'Authorization': `Bearer ${this.accessToken}`,
-           'Dropbox-API-Arg': JSON.stringify({
-             path: dropboxPath
-           }),
-           'Content-Type': 'application/octet-stream'
-         },
-         responseType: 'stream'
-       });
+      const response = await axios({
+        method: 'POST',
+        url: 'https://content.dropboxapi.com/2/files/download',
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Dropbox-API-Arg': JSON.stringify({
+            path: dropboxPath
+          }),
+          'Content-Type': 'application/octet-stream'
+        },
+        responseType: 'stream'
+      });
 
       const writer = fs.createWriteStream(localFilePath);
       response.data.pipe(writer);
@@ -204,7 +228,22 @@ class DropboxHandler {
 
   // Clean up downloaded file
   async cleanupFile(localFilePath) {
-    await cleanupTempFile(localFilePath);
+    try {
+      await cleanupTempFile(localFilePath);
+    } catch (error) {
+      logger.warn(`Failed to cleanup temp file ${localFilePath}:`, error.message);
+    }
+  }
+
+  // Get list of processed files (for debugging)
+  getProcessedFiles() {
+    return Array.from(this.processedFiles);
+  }
+
+  // Clear processed files list (for testing/reset)
+  clearProcessedFiles() {
+    this.processedFiles.clear();
+    this.processingFiles.clear();
   }
 }
 
