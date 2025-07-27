@@ -24,8 +24,13 @@ class TranscriptionHandler {
       logger.info(`Estimated audio duration: ${formatDuration(estimatedMinutes * 60)}`);
       logger.info(`Estimated cost: $${estimatedCost.toFixed(4)}`);
 
+      // Create a file object with the required properties for OpenAI API
+      const file = new File([fileBuffer], path.basename(filePath), {
+        type: this.getMimeType(path.extname(filePath))
+      });
+
       const transcription = await this.openai.audio.transcriptions.create({
-        file: fileBuffer,
+        file: file,
         model: 'whisper-1',
         response_format: 'verbose_json',
         language: 'en'
@@ -152,6 +157,19 @@ Format your response as valid JSON with these fields:
       topics: lines.filter(line => line.toLowerCase().includes('topic') || line.toLowerCase().includes('theme')).map(line => line.replace(/^[•\-]\s*/, '').trim()),
       sentiment: lines.find(line => line.toLowerCase().includes('sentiment'))?.split(':')[1]?.trim() || 'neutral'
     };
+  }
+
+  // Get MIME type for file extension
+  getMimeType(extension) {
+    const mimeTypes = {
+      '.mp3': 'audio/mpeg',
+      '.m4a': 'audio/mp4',
+      '.wav': 'audio/wav',
+      '.flac': 'audio/flac',
+      '.ogg': 'audio/ogg',
+      '.webm': 'audio/webm'
+    };
+    return mimeTypes[extension.toLowerCase()] || 'audio/mpeg';
   }
 
   // Estimate audio duration based on file size (rough approximation)
