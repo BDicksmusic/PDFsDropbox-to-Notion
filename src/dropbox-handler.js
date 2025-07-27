@@ -40,17 +40,20 @@ class DropboxHandler {
         listFolder: notification.list_folder 
       });
 
-      if (!notification.list_folder || !notification.list_folder.entries) {
-        logger.warn('Invalid webhook notification format');
-        return [];
-      }
-
-      const newFiles = notification.list_folder.entries.filter(entry => 
+      // When we receive a webhook, we need to check the folder for new files
+      // The webhook just tells us something changed, not what specifically
+      logger.info('Checking folder for new files after webhook notification');
+      
+      const files = await this.listFiles();
+      
+      // For now, process all files in the folder
+      // In a production system, you might want to track which files have been processed
+      const newFiles = files.filter(entry => 
         entry['.tag'] === 'file' && 
         entry.path_lower.startsWith(this.folderPath.toLowerCase())
       );
 
-      logger.info(`Found ${newFiles.length} new files in monitored folder`);
+      logger.info(`Found ${newFiles.length} files in monitored folder`);
 
       const processedFiles = [];
       for (const file of newFiles) {
