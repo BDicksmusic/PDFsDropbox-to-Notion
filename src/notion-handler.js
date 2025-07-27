@@ -60,132 +60,170 @@ class NotionHandler {
               }
             }
           ]
-        },
-
-        // Summary property
-        'Summary': {
-          rich_text: [
-            {
-              type: 'text',
-              text: {
-                content: summary || 'No summary available'
-              }
-            }
-          ]
-        },
-
-        // Key Points property
-        'Key Points': {
-          rich_text: [
-            {
-              type: 'text',
-              text: {
-                content: keyPoints?.join('\n• ') || 'No key points identified'
-              }
-            }
-          ]
-        },
-
-        // Action Items property
-        'Action Items': {
-          rich_text: [
-            {
-              type: 'text',
-              text: {
-                content: actionItems?.length > 0 ? actionItems.join('\n• ') : 'No action items identified'
-              }
-            }
-          ]
-        },
-
-        // Topics property
-        'Topics': {
-          multi_select: topics?.map(topic => ({ name: topic })) || []
-        },
-
-        // Sentiment property
-        'Sentiment': {
-          select: {
-            name: this.normalizeSentiment(sentiment)
-          }
-        },
-
-        // Duration property
-        'Duration': {
-          number: metadata?.duration || 0
-        },
-
-        // Word Count property
-        'Word Count': {
-          number: metadata?.wordCount || 0
-        },
-
-        // Language property
-        'Language': {
-          select: {
-            name: metadata?.language || 'Unknown'
-          }
-        },
-
-        // Processed Date property
-        'Processed Date': {
-          date: {
-            start: metadata?.processedAt || new Date().toISOString()
-          }
-        },
-
-        // File Name property
-        'File Name': {
-          rich_text: [
-            {
-              type: 'text',
-              text: {
-                content: fileName
-              }
-            }
-          ]
-        },
-
-        // Status property
-        'Status': {
-          select: {
-            name: 'Processed'
-          }
         }
       },
 
-      // Add the full transcript as a block
-      children: [
+      // Add all content as formatted blocks
+      children: this.buildContentBlocks(audioData)
+    };
+  }
+
+  // Build formatted content blocks for the page
+  buildContentBlocks(audioData) {
+    const { fileName, summary, keyPoints, actionItems, topics, sentiment, metadata, originalText } = audioData;
+    const blocks = [];
+
+    // Summary section
+    if (summary) {
+      blocks.push(
         {
           object: 'block',
           type: 'heading_2',
           heading_2: {
-            rich_text: [
-              {
-                type: 'text',
-                text: {
-                  content: 'Full Transcript'
-                }
-              }
-            ]
+            rich_text: [{ type: 'text', text: { content: 'Summary' } }]
           }
         },
         {
           object: 'block',
           type: 'paragraph',
           paragraph: {
-            rich_text: [
-              {
-                type: 'text',
-                text: {
-                  content: audioData.originalText || 'No transcript available'
-                }
-              }
-            ]
+            rich_text: [{ type: 'text', text: { content: summary } }]
           }
         }
-      ]
-    };
+      );
+    }
+
+    // Key Points section
+    if (keyPoints && keyPoints.length > 0) {
+      blocks.push(
+        {
+          object: 'block',
+          type: 'heading_2',
+          heading_2: {
+            rich_text: [{ type: 'text', text: { content: 'Key Points' } }]
+          }
+        }
+      );
+      
+      keyPoints.forEach(point => {
+        blocks.push({
+          object: 'block',
+          type: 'bulleted_list_item',
+          bulleted_list_item: {
+            rich_text: [{ type: 'text', text: { content: point } }]
+          }
+        });
+      });
+    }
+
+    // Action Items section
+    if (actionItems && actionItems.length > 0) {
+      blocks.push(
+        {
+          object: 'block',
+          type: 'heading_2',
+          heading_2: {
+            rich_text: [{ type: 'text', text: { content: 'Action Items' } }]
+          }
+        }
+      );
+      
+      actionItems.forEach(item => {
+        blocks.push({
+          object: 'block',
+          type: 'bulleted_list_item',
+          bulleted_list_item: {
+            rich_text: [{ type: 'text', text: { content: item } }]
+          }
+        });
+      });
+    }
+
+    // Topics section
+    if (topics && topics.length > 0) {
+      blocks.push(
+        {
+          object: 'block',
+          type: 'heading_2',
+          heading_2: {
+            rich_text: [{ type: 'text', text: { content: 'Topics' } }]
+          }
+        },
+        {
+          object: 'block',
+          type: 'paragraph',
+          paragraph: {
+            rich_text: [{ type: 'text', text: { content: topics.join(', ') } }]
+          }
+        }
+      );
+    }
+
+    // Metadata section
+    blocks.push(
+      {
+        object: 'block',
+        type: 'heading_2',
+        heading_2: {
+          rich_text: [{ type: 'text', text: { content: 'Metadata' } }]
+        }
+      },
+      {
+        object: 'block',
+        type: 'paragraph',
+        paragraph: {
+          rich_text: [
+            { type: 'text', text: { content: `📁 File: ${fileName}` } },
+            { type: 'text', text: { content: '\n' } },
+            { type: 'text', text: { content: `⏱️ Duration: ${this.formatDuration(metadata?.duration || 0)}` } },
+            { type: 'text', text: { content: '\n' } },
+            { type: 'text', text: { content: `📝 Words: ${metadata?.wordCount || 0}` } },
+            { type: 'text', text: { content: '\n' } },
+            { type: 'text', text: { content: `🌍 Language: ${metadata?.language || 'Unknown'}` } },
+            { type: 'text', text: { content: '\n' } },
+            { type: 'text', text: { content: `😊 Sentiment: ${this.normalizeSentiment(sentiment)}` } },
+            { type: 'text', text: { content: '\n' } },
+            { type: 'text', text: { content: `📅 Processed: ${new Date(metadata?.processedAt || Date.now()).toLocaleString()}` } }
+          ]
+        }
+      }
+    );
+
+    // Full Transcript section
+    if (originalText) {
+      blocks.push(
+        {
+          object: 'block',
+          type: 'heading_2',
+          heading_2: {
+            rich_text: [{ type: 'text', text: { content: 'Full Transcript' } }]
+          }
+        },
+        {
+          object: 'block',
+          type: 'paragraph',
+          paragraph: {
+            rich_text: [{ type: 'text', text: { content: originalText } }]
+          }
+        }
+      );
+    }
+
+    return blocks;
+  }
+
+  // Format duration for display
+  formatDuration(seconds) {
+    if (!seconds || seconds === 0) return 'Unknown';
+    
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.floor(seconds % 60);
+    
+    if (minutes > 0) {
+      return `${minutes}m ${remainingSeconds}s`;
+    } else {
+      return `${remainingSeconds}s`;
+    }
   }
 
   // Normalize sentiment values for Notion select field
@@ -228,9 +266,9 @@ class NotionHandler {
         headers: this.getHeaders(),
         data: {
           filter: {
-            property: 'File Name',
-            rich_text: {
-              equals: fileName
+            property: 'Title',
+            title: {
+              equals: fileName.replace(/\.[^/.]+$/, '') // Remove file extension to match title
             }
           }
         }
@@ -250,6 +288,7 @@ class NotionHandler {
 
       const pageData = this.buildPageData(audioData);
       
+      // Update page properties
       const response = await axios({
         method: 'PATCH',
         url: `${this.baseURL}/pages/${pageId}`,
@@ -259,11 +298,61 @@ class NotionHandler {
         }
       });
 
+      // Clear existing blocks and add new content
+      await this.updatePageContent(pageId, pageData.children);
+
       logger.info(`Successfully updated Notion page: ${pageId}`);
       return response.data;
 
     } catch (error) {
       logger.error(`Failed to update Notion page ${pageId}:`, error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  // Update page content blocks
+  async updatePageContent(pageId, blocks) {
+    try {
+      // First, delete all existing blocks
+      await this.deletePageBlocks(pageId);
+      
+      // Then add new blocks
+      for (const block of blocks) {
+        await axios({
+          method: 'PATCH',
+          url: `${this.baseURL}/blocks/${pageId}/children`,
+          headers: this.getHeaders(),
+          data: {
+            children: [block]
+          }
+        });
+      }
+    } catch (error) {
+      logger.error(`Failed to update page content for ${pageId}:`, error.message);
+      throw error;
+    }
+  }
+
+  // Delete all blocks in a page
+  async deletePageBlocks(pageId) {
+    try {
+      // Get all blocks in the page
+      const response = await axios({
+        method: 'GET',
+        url: `${this.baseURL}/blocks/${pageId}/children`,
+        headers: this.getHeaders()
+      });
+
+      // Delete each block
+      for (const block of response.data.results) {
+        await axios({
+          method: 'DELETE',
+          url: `${this.baseURL}/blocks/${block.id}`,
+          headers: this.getHeaders()
+        });
+      }
+    } catch (error) {
+      logger.error(`Failed to delete blocks for page ${pageId}:`, error.message);
       throw error;
     }
   }
