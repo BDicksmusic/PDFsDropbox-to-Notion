@@ -148,6 +148,22 @@ class DropboxHandler {
       );
 
       logger.info(`Found ${audioFiles.length} files in audio folder, ${pdfFiles.length} files in PDF folder`);
+      
+      // Debug: Log the paths we're checking against
+      logger.info(`Checking for audio files in: ${this.audioFolderPath.toLowerCase()}`);
+      logger.info(`Checking for PDF files in: ${this.pdfFolderPath.toLowerCase()}`);
+      
+      // Debug: Log all file paths to see what we're getting
+      const allFilePaths = files.filter(entry => entry['.tag'] === 'file').map(entry => entry.path_lower);
+      logger.info(`All file paths found: ${JSON.stringify(allFilePaths)}`);
+      
+      // Debug: Log which files match each folder
+      if (audioFiles.length > 0) {
+        logger.info(`Audio files found: ${audioFiles.map(f => f.path_lower).join(', ')}`);
+      }
+      if (pdfFiles.length > 0) {
+        logger.info(`PDF files found: ${pdfFiles.map(f => f.path_lower).join(', ')}`);
+      }
 
       // Filter for files that were modified recently (within the last 5 minutes)
       // This prevents processing old files on every webhook
@@ -433,6 +449,8 @@ class DropboxHandler {
   // List files in Dropbox
   async listFiles() {
     try {
+      logger.info(`Listing files from Dropbox root with audio folder: ${this.audioFolderPath}, PDF folder: ${this.pdfFolderPath}`);
+      
       const response = await this.makeAuthenticatedRequest({
         method: 'POST',
         url: 'https://api.dropboxapi.com/2/files/list_folder',
@@ -447,6 +465,15 @@ class DropboxHandler {
           include_has_explicit_shared_members: false,
           include_mounted_folders: true,
           include_non_downloadable_files: false
+        }
+      });
+
+      logger.info(`Received ${response.data.entries.length} total entries from Dropbox`);
+      
+      // Log all file entries for debugging
+      response.data.entries.forEach((entry, index) => {
+        if (entry['.tag'] === 'file') {
+          logger.debug(`Entry ${index}: ${entry.path_lower} (modified: ${entry.server_modified})`);
         }
       });
 
