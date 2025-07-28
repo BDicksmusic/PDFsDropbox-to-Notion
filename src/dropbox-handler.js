@@ -449,35 +449,70 @@ class DropboxHandler {
   // List files in Dropbox
   async listFiles() {
     try {
-      logger.info(`Listing files from Dropbox root with audio folder: ${this.audioFolderPath}, PDF folder: ${this.pdfFolderPath}`);
+      logger.info(`Listing files from specific folders: audio folder: ${this.audioFolderPath}, PDF folder: ${this.pdfFolderPath}`);
       
-      const response = await this.makeAuthenticatedRequest({
-        method: 'POST',
-        url: 'https://api.dropboxapi.com/2/files/list_folder',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        data: {
-          path: '',
-          recursive: true,
-          include_media_info: false,
-          include_deleted: false,
-          include_has_explicit_shared_members: false,
-          include_mounted_folders: true,
-          include_non_downloadable_files: false
-        }
-      });
+      const allFiles = [];
+      
+      // List files from audio folder
+      try {
+        const audioResponse = await this.makeAuthenticatedRequest({
+          method: 'POST',
+          url: 'https://api.dropboxapi.com/2/files/list_folder',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          data: {
+            path: this.audioFolderPath,
+            recursive: true,
+            include_media_info: false,
+            include_deleted: false,
+            include_has_explicit_shared_members: false,
+            include_mounted_folders: true,
+            include_non_downloadable_files: false
+          }
+        });
+        
+        logger.info(`Received ${audioResponse.data.entries.length} entries from audio folder`);
+        allFiles.push(...audioResponse.data.entries);
+      } catch (error) {
+        logger.warn(`Failed to list audio folder ${this.audioFolderPath}:`, error.response?.data || error.message);
+      }
+      
+      // List files from PDF folder
+      try {
+        const pdfResponse = await this.makeAuthenticatedRequest({
+          method: 'POST',
+          url: 'https://api.dropboxapi.com/2/files/list_folder',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          data: {
+            path: this.pdfFolderPath,
+            recursive: true,
+            include_media_info: false,
+            include_deleted: false,
+            include_has_explicit_shared_members: false,
+            include_mounted_folders: true,
+            include_non_downloadable_files: false
+          }
+        });
+        
+        logger.info(`Received ${pdfResponse.data.entries.length} entries from PDF folder`);
+        allFiles.push(...pdfResponse.data.entries);
+      } catch (error) {
+        logger.warn(`Failed to list PDF folder ${this.pdfFolderPath}:`, error.response?.data || error.message);
+      }
 
-      logger.info(`Received ${response.data.entries.length} total entries from Dropbox`);
+      logger.info(`Total entries found: ${allFiles.length}`);
       
       // Log all file entries for debugging
-      response.data.entries.forEach((entry, index) => {
+      allFiles.forEach((entry, index) => {
         if (entry['.tag'] === 'file') {
           logger.debug(`Entry ${index}: ${entry.path_lower} (modified: ${entry.server_modified})`);
         }
       });
 
-      return response.data.entries;
+      return allFiles;
     } catch (error) {
       logger.error('Failed to list files:', error.response?.data || error.message);
       throw error;
