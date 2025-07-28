@@ -12,6 +12,10 @@ class AutomationServer {
     this.transcriptionHandler = new TranscriptionHandler();
     this.notionHandler = new NotionHandler();
     
+    // Add webhook deduplication tracking
+    this.processedWebhooks = new Set();
+    this.webhookProcessingLocks = new Map();
+    
     // Add background mode option
     this.backgroundMode = process.env.BACKGROUND_MODE === 'true';
 
@@ -68,34 +72,8 @@ class AutomationServer {
       }
     });
 
-    // Dropbox webhook endpoint
-    this.app.post('/webhook', async (req, res) => {
-      try {
-        const signature = req.headers['x-dropbox-signature'];
-        
-        if (!signature) {
-          logger.warn('Webhook request missing signature');
-          return res.status(400).json({ error: 'Missing signature' });
-        }
-
-        // Verify webhook signature (temporarily disabled for testing)
-        // if (this.dropboxHandler.webhookSecret && !this.dropboxHandler.verifyWebhookSignature(req.body, signature)) {
-        //   logger.warn('Invalid webhook signature');
-        //   return res.status(401).json({ error: 'Invalid signature' });
-        // }
-
-        const notification = req.body;
-        logger.info('Received Dropbox webhook', { notification });
-
-        // Process webhook asynchronously
-        this.processWebhookAsync(notification);
-
-        res.status(200).json({ status: 'processing' });
-      } catch (error) {
-        logger.error('Webhook processing error', { error: error.message });
-        res.status(500).json({ error: 'Internal server error' });
-      }
-    });
+    // Webhook endpoint for Dropbox notifications
+    this.setupWebhookRoute();
 
     // Manual file processing endpoint
     this.app.post('/process-file', async (req, res) => {
@@ -184,6 +162,69 @@ class AutomationServer {
         });
       });
     }
+  }
+
+  // Webhook endpoint for Dropbox notifications
+  setupWebhookRoute() {
+    this.app.post('/webhook', async (req, res) => {
+      try {
+        const body = req.body;
+        const signature = req.headers['x-dropbox-signature'];
+        
+        // Verify webhook signature
+        if (!this.dropboxHandler.verifyWebhookSignature(body, signature)) {
+          logger.warn('Webhook request missing signature');
+          return res.status(401).json({ error: 'Invalid signature' });
+        }
+
+        // Create a unique identifier for this webhook notification
+        const webhookId = this.createWebhookId(body);
+        
+        // Check if we've already processed this webhook
+        if (this.processedWebhooks.has(webhookId)) {
+          logger.info(`Webhook ${webhookId} already processed, skipping`);
+          return res.status(200).json({ status: 'already_processed' });
+        }
+
+        // Check if we're currently processing this webhook
+        if (this.webhookProcessingLocks.has(webhookId)) {
+          logger.info(`Webhook ${webhookId} currently being processed, skipping`);
+          return res.status(200).json({ status: 'processing_in_progress' });
+        }
+
+        // Mark this webhook as being processed
+        this.webhookProcessingLocks.set(webhookId, Date.now());
+        
+        // Add to processed set to prevent reprocessing
+        this.processedWebhooks.add(webhookId);
+        
+        // Clean up old webhook IDs (keep last 100)
+        if (this.processedWebhooks.size > 100) {
+          const webhookArray = Array.from(this.processedWebhooks);
+          this.processedWebhooks = new Set(webhookArray.slice(-50));
+        }
+
+        // Process webhook asynchronously
+        this.processWebhookAsync(body).finally(() => {
+          // Remove from processing locks
+          this.webhookProcessingLocks.delete(webhookId);
+        });
+
+        res.status(200).json({ status: 'processing' });
+        
+      } catch (error) {
+        logger.error('Webhook processing error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+      }
+    });
+  }
+
+  // Create a unique identifier for webhook notifications
+  createWebhookId(notification) {
+    // Use timestamp and account info to create unique ID
+    const timestamp = notification.timestamp || Date.now();
+    const account = notification.list_folder?.accounts?.[0] || 'unknown';
+    return `${account}_${timestamp}`;
   }
 
   // Process webhook asynchronously

@@ -9,12 +9,15 @@ const { logger, ensureTempDir, cleanupTempFile, isValidAudioFormat, isValidFileS
 class DropboxHandler {
   constructor() {
     this.accessToken = config.dropbox.accessToken;
-    this.refreshToken = config.dropbox.refreshToken; // Add refresh token support
-    this.appKey = config.dropbox.appKey; // Add app key for token refresh
-    this.appSecret = config.dropbox.appSecret; // Add app secret for token refresh
-    this.webhookSecret = config.dropbox.webhookSecret;
+    this.refreshToken = config.dropbox.refreshToken;
+    this.appKey = config.dropbox.appKey;
+    this.appSecret = config.dropbox.appSecret;
     this.folderPath = config.dropbox.folderPath;
-    // Remove in-memory tracking - we'll use Notion database as source of truth
+    this.webhookSecret = config.dropbox.webhookSecret;
+    
+    // Add file processing deduplication
+    this.recentlyProcessedFiles = new Map();
+    this.processingLocks = new Map();
   }
 
   // Refresh access token using refresh token
@@ -186,58 +189,90 @@ class DropboxHandler {
 
     logger.info(`Checking file: ${fileName}`);
 
-    // Validate file format
-    if (!isValidAudioFormat(fileName)) {
-      logger.warn(`Skipping file ${fileName}: unsupported audio format`);
+    // Check if we're currently processing this file
+    if (this.processingLocks.has(filePath)) {
+      logger.info(`File ${fileName} is currently being processed, skipping`);
       return null;
     }
 
-    // Validate file size
-    if (!isValidFileSize(fileEntry.size)) {
-      logger.warn(`Skipping file ${fileName}: file too large (${fileEntry.size} bytes)`);
+    // Check if we've recently processed this file (within last 2 minutes)
+    const recentlyProcessed = this.recentlyProcessedFiles.get(filePath);
+    if (recentlyProcessed && (Date.now() - recentlyProcessed) < 2 * 60 * 1000) {
+      logger.info(`File ${fileName} was recently processed, skipping`);
       return null;
     }
 
-    // Check for problematic characters in filename
-    const problematicChars = /[<>:"/\\|?*\x00-\x1f]/g;
-    if (problematicChars.test(fileName)) {
-      logger.warn(`Skipping file ${fileName}: contains problematic characters for file system`);
-      return null;
-    }
+    // Mark file as being processed
+    this.processingLocks.set(filePath, Date.now());
 
-    // Check for special characters in the full path that might cause API issues
-    if (/[^\x00-\x7F]/.test(filePath)) {
-      logger.warn(`Skipping file ${fileName}: path contains special characters that may cause API issues`);
-      logger.warn(`Problematic path: ${filePath}`);
-      return null;
-    }
-
-    // Get shareable URL for the file
-    let shareableUrl = null;
     try {
-      shareableUrl = await this.getShareableUrl(filePath);
-      logger.info(`Successfully obtained shareable URL for ${fileName}`);
-    } catch (error) {
-      logger.error(`Failed to get shareable URL for ${fileName}:`, error.message);
-      logger.warn(`Will fall back to filename-based duplicate detection for ${fileName}`);
-    }
+      // Validate file format
+      if (!isValidAudioFormat(fileName)) {
+        logger.warn(`Skipping file ${fileName}: unsupported audio format`);
+        return null;
+      }
 
-    // Download file
-    try {
+      // Validate file size
+      if (!isValidFileSize(fileEntry.size)) {
+        logger.warn(`Skipping file ${fileName}: file too large (${fileEntry.size} bytes)`);
+        return null;
+      }
+
+      // Check for problematic characters in filename
+      const problematicChars = /[<>:"/\\|?*\x00-\x1f]/g;
+      if (problematicChars.test(fileName)) {
+        logger.warn(`Skipping file ${fileName}: contains problematic characters for file system`);
+        return null;
+      }
+
+      // Check for special characters in the full path that might cause API issues
+      if (/[^\x00-\x7F]/.test(filePath)) {
+        logger.warn(`Skipping file ${fileName}: path contains special characters that may cause API issues`);
+        logger.warn(`Problematic path: ${filePath}`);
+        return null;
+      }
+
+      // Get shareable URL for the file
+      let shareableUrl = null;
+      try {
+        shareableUrl = await this.getShareableUrl(filePath);
+        logger.info(`Successfully obtained shareable URL for ${fileName}`);
+      } catch (error) {
+        logger.error(`Failed to get shareable URL for ${fileName}:`, error.message);
+        // Continue without shareable URL - will use filename-based tracking
+      }
+
+      // Download the file
       const localFilePath = await this.downloadFile(filePath, sanitizedFileName);
-      
+      if (!localFilePath) {
+        logger.error(`Failed to download file ${fileName}`);
+        return null;
+      }
+
+      // Mark file as recently processed
+      this.recentlyProcessedFiles.set(filePath, Date.now());
+
+      // Clean up old entries (keep last 50 files)
+      if (this.recentlyProcessedFiles.size > 50) {
+        const entries = Array.from(this.recentlyProcessedFiles.entries());
+        this.recentlyProcessedFiles = new Map(entries.slice(-25));
+      }
+
       return {
-        originalPath: filePath,
         fileName: fileName,
-        sanitizedFileName: sanitizedFileName,
+        originalPath: filePath,
         localPath: localFilePath,
+        shareableUrl: shareableUrl,
         size: fileEntry.size,
-        modified: fileEntry.server_modified,
-        shareableUrl: shareableUrl
+        modified: fileEntry.server_modified
       };
+
     } catch (error) {
-      logger.error(`Failed to download file ${fileName}:`, error.message);
+      logger.error(`Failed to process file ${fileName}:`, error.message);
       return null;
+    } finally {
+      // Remove from processing locks
+      this.processingLocks.delete(filePath);
     }
   }
 
