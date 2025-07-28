@@ -1,20 +1,25 @@
 const express = require('express');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 const config = require('../config/config');
-const { logger, ensureTempDir } = require('./utils');
+const { logger, ensureTempDir, cleanupTempFile } = require('./utils');
 const DropboxHandler = require('./dropbox-handler');
-const TranscriptionHandler = require('./transcription');
 const NotionHandler = require('./notion-handler');
-const DocumentHandler = require('./document-handler');
 const NotionPDFHandler = require('./notion-pdf-handler');
+const TranscriptionHandler = require('./transcription');
+const DocumentHandler = require('./document-handler');
+const URLMonitor = require('./url-monitor');
 
 class AutomationServer {
   constructor() {
     this.app = express();
     this.dropboxHandler = new DropboxHandler();
-    this.transcriptionHandler = new TranscriptionHandler();
     this.notionHandler = new NotionHandler();
-    this.documentHandler = new DocumentHandler();
     this.notionPDFHandler = new NotionPDFHandler();
+    this.transcriptionHandler = new TranscriptionHandler();
+    this.documentHandler = new DocumentHandler();
+    this.urlMonitor = new URLMonitor();
     
     // Add webhook deduplication tracking
     this.processedWebhooks = new Set();
@@ -25,6 +30,7 @@ class AutomationServer {
 
     this.setupMiddleware();
     this.setupRoutes();
+    this.setupUrlMonitoring();
   }
 
   setupMiddleware() {
@@ -33,6 +39,14 @@ class AutomationServer {
     
     // Parse raw bodies for webhook verification
     this.app.use('/webhook', express.raw({ type: 'application/json', limit: '10mb' }));
+    
+    // Multer for file uploads
+    this.upload = multer({
+      dest: config.processing.tempFolder,
+      limits: {
+        fileSize: config.processing.maxFileSizeMB * 1024 * 1024
+      }
+    });
     
     // Logging middleware
     this.app.use((req, res, next) => {
@@ -147,6 +161,42 @@ class AutomationServer {
         res.json(status);
       } catch (error) {
         logger.error('Status check error', { error: error.message });
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // URL monitoring endpoints
+    this.app.post('/monitor/url', async (req, res) => {
+      try {
+        const { url, customName, checkInterval } = req.body;
+        
+        if (!url) {
+          return res.status(400).json({ error: 'URL is required' });
+        }
+
+        const config = this.urlMonitor.addUrl(url, customName, checkInterval);
+        res.json({ status: 'success', config });
+      } catch (error) {
+        logger.error('URL monitoring error:', error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // Add bulletin URL to monitoring
+    this.app.post('/monitor/bulletin', async (req, res) => {
+      try {
+        const bulletinUrl = 'https://tricityministries.org/bskpdf/bulletin/';
+        const customName = 'Tricity Ministries Bulletin';
+        const checkInterval = 1000 * 60 * 60; // Check every hour
+        
+        const config = this.urlMonitor.addUrl(bulletinUrl, customName, checkInterval);
+        res.json({ 
+          status: 'success', 
+          message: 'Bulletin URL added to monitoring',
+          config 
+        });
+      } catch (error) {
+        logger.error('Bulletin monitoring error:', error);
         res.status(500).json({ error: error.message });
       }
     });
@@ -414,7 +464,6 @@ class AutomationServer {
       }
 
       // Check if file actually exists before processing
-      const fs = require('fs');
       if (!fs.existsSync(file.localPath)) {
         throw new Error(`File ${file.fileName} does not exist at path: ${file.localPath}`);
       }
@@ -661,6 +710,34 @@ class AutomationServer {
       logger.error('Failed to start server:', error);
       process.exit(1);
     }
+  }
+
+  setupUrlMonitoring() {
+    // Start URL monitoring when server starts
+    this.urlMonitor.start();
+    
+    // Set up callback for when URLs change
+    this.urlMonitor.onUrlChange = async (result) => {
+      try {
+        logger.info(`Processing URL change: ${result.url}`);
+        
+        // Process the downloaded file
+        const fileInfo = {
+          filePath: result.filePath,
+          fileName: path.basename(result.filePath),
+          size: fs.statSync(result.filePath).size
+        };
+
+        await this.processFile(fileInfo, result.customName, false);
+        
+        // Clean up the temporary file
+        await cleanupTempFile(result.filePath);
+        
+        logger.info(`Successfully processed URL change: ${result.url}`);
+      } catch (error) {
+        logger.error(`Error processing URL change for ${result.url}:`, error);
+      }
+    };
   }
 }
 
