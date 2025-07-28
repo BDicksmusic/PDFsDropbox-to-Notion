@@ -209,6 +209,7 @@ class DropboxHandler {
   // Process individual file
   async processFile(fileEntry, fileType = null) {
     const filePath = fileEntry.path_lower;
+    const originalPath = fileEntry.path_display || fileEntry.path_lower; // Use original case-sensitive path
     const fileName = path.basename(filePath);
     const sanitizedFileName = sanitizeFilename(fileName);
 
@@ -264,13 +265,13 @@ class DropboxHandler {
         return null;
       }
 
-      // Download the file
-      const localPath = await this.downloadFile(filePath, sanitizedFileName);
+      // Download the file using original case-sensitive path
+      const localPath = await this.downloadFile(originalPath, sanitizedFileName);
       
-      // Get shareable URL for tracking
+      // Get shareable URL for tracking using original case-sensitive path
       let shareableUrl = null;
       try {
-        shareableUrl = await this.getShareableUrl(filePath);
+        shareableUrl = await this.getShareableUrl(originalPath);
       } catch (error) {
         logger.warn(`Failed to get shareable URL for ${fileName}:`, error.message);
       }
