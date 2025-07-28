@@ -566,6 +566,17 @@ class AutomationServer {
         throw new Error(`Transcription failed for ${file.fileName} - no audio data or summary generated`);
       }
 
+      // Add content validation to prevent processing test files or minimal content
+      if (!this.validateAudioContent(audioData, file.fileName)) {
+        logger.warn(`Skipping ${file.fileName}: Content validation failed (likely test data or minimal content)`);
+        return {
+          fileName: file.fileName,
+          skipped: true,
+          reason: 'Content validation failed - likely test data or minimal content',
+          fileType: 'audio'
+        };
+      }
+
       // Add the shareableUrl to audioData for Notion processing
       if (file.shareableUrl) {
         audioData.shareableUrl = file.shareableUrl;
@@ -609,6 +620,17 @@ class AutomationServer {
       // Only proceed to Notion if processing was successful
       if (!documentData || !documentData.summary) {
         throw new Error(`Document processing failed for ${file.fileName} - no data or summary generated`);
+      }
+
+      // Add content validation to prevent processing test files or minimal content
+      if (!this.validateDocumentContent(documentData, file.fileName)) {
+        logger.warn(`Skipping ${file.fileName}: Content validation failed (likely test data or minimal content)`);
+        return {
+          fileName: file.fileName,
+          skipped: true,
+          reason: 'Content validation failed - likely test data or minimal content',
+          fileType: 'document'
+        };
       }
 
       // Add the shareableUrl to documentData for Notion processing
@@ -823,6 +845,87 @@ class AutomationServer {
   incrementApiCallCount() {
     this.apiCallCount++;
     logger.info(`API call count incremented: ${this.apiCallCount}/${this.dailyApiLimit}`);
+  }
+
+  // Validate document content to prevent processing of test files or minimal content
+  validateDocumentContent(documentData, fileName) {
+    const minContentLength = 100; // Minimum content length in characters
+    const minSummaryLength = 50; // Minimum summary length in characters
+
+    // Check for test file patterns
+    if (this.isTestFile(fileName, documentData.originalText || documentData.text)) {
+      return false;
+    }
+
+    if (documentData.originalText && documentData.originalText.length < minContentLength) {
+      logger.warn(`Document ${fileName} has very short content: ${documentData.originalText.length} characters. Skipping.`);
+      return false;
+    }
+
+    if (documentData.summary && documentData.summary.length < minSummaryLength) {
+      logger.warn(`Document ${fileName} has very short summary: ${documentData.summary.length} characters. Skipping.`);
+      return false;
+    }
+
+    return true;
+  }
+
+  // Validate audio content to prevent processing of test files or minimal content
+  validateAudioContent(audioData, fileName) {
+    const minSummaryLength = 50; // Minimum summary length in characters
+
+    // Check for test file patterns
+    if (this.isTestFile(fileName, audioData.originalText)) {
+      return false;
+    }
+
+    if (audioData.summary && audioData.summary.length < minSummaryLength) {
+      logger.warn(`Audio ${fileName} has very short summary: ${audioData.summary.length} characters. Skipping.`);
+      return false;
+    }
+
+    return true;
+  }
+
+  // Detect test files based on filename and content patterns
+  isTestFile(fileName, content) {
+    const testPatterns = [
+      /test/i,
+      /sample/i,
+      /demo/i,
+      /dummy/i,
+      /placeholder/i
+    ];
+
+    // Check filename for test patterns
+    for (const pattern of testPatterns) {
+      if (pattern.test(fileName)) {
+        logger.warn(`File ${fileName} appears to be a test file based on filename pattern`);
+        return true;
+      }
+    }
+
+    if (!content) return false;
+
+    // Check for repetitive content (like "注意事項" repeated)
+    const words = content.trim().split(/\s+/);
+    if (words.length > 0) {
+      const uniqueWords = new Set(words);
+      const repetitionRatio = words.length / uniqueWords.size;
+      
+      if (repetitionRatio > 3 && words.length < 20) {
+        logger.warn(`File ${fileName} appears to have repetitive test content (repetition ratio: ${repetitionRatio})`);
+        return true;
+      }
+    }
+
+    // Check for very short content with non-meaningful text
+    if (content.length < 50 && !/[a-zA-Z0-9]{10,}/.test(content)) {
+      logger.warn(`File ${fileName} appears to have minimal or non-meaningful content`);
+      return true;
+    }
+
+    return false;
   }
 }
 
