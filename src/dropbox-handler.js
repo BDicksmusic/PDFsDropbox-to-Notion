@@ -165,33 +165,13 @@ class DropboxHandler {
         logger.info(`PDF files found: ${pdfFiles.map(f => f.path_lower).join(', ')}`);
       }
 
-      // Filter for files that were modified recently (within the last 5 minutes)
-      // This prevents processing old files on every webhook
-      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-      const recentAudioFiles = audioFiles.filter(file => {
-        const modifiedTime = new Date(file.server_modified);
-        const isRecent = modifiedTime > fiveMinutesAgo;
-        if (!isRecent) {
-          logger.debug(`Skipping old audio file ${file.path_lower}: modified ${modifiedTime.toISOString()}`);
-        }
-        return isRecent;
-      });
-
-      const recentPdfFiles = pdfFiles.filter(file => {
-        const modifiedTime = new Date(file.server_modified);
-        const isRecent = modifiedTime > fiveMinutesAgo;
-        if (!isRecent) {
-          logger.debug(`Skipping old PDF file ${file.path_lower}: modified ${modifiedTime.toISOString()}`);
-        }
-        return isRecent;
-      });
-
-      logger.info(`Found ${recentAudioFiles.length} recently modified audio files, ${recentPdfFiles.length} recently modified PDF files`);
+      // Process all files found - let duplicate detection handle whether to create new entries
+      logger.info(`Found ${audioFiles.length} audio files, ${pdfFiles.length} PDF files to process`);
 
       const processedFiles = [];
       
       // Process audio files
-      for (const file of recentAudioFiles) {
+      for (const file of audioFiles) {
         try {
           const processedFile = await this.processFile(file, 'audio');
           if (processedFile) {
@@ -205,7 +185,7 @@ class DropboxHandler {
       }
 
       // Process PDF files
-      for (const file of recentPdfFiles) {
+      for (const file of pdfFiles) {
         try {
           const processedFile = await this.processFile(file, 'document');
           if (processedFile) {
