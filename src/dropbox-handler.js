@@ -365,13 +365,15 @@ class DropboxHandler {
       
       logger.info(`Downloading file from Dropbox: ${dropboxPath} -> ${localPath}`);
 
+      // Debug: Log the API request details
+      const apiArg = JSON.stringify({ path: dropboxPath });
+      logger.info(`Dropbox API request - URL: https://content.dropboxapi.com/2/files/download, Path: ${dropboxPath}, API-Arg: ${apiArg}`);
+
       const response = await this.makeAuthenticatedRequest({
         method: 'POST',
         url: 'https://content.dropboxapi.com/2/files/download',
         headers: {
-          'Dropbox-API-Arg': JSON.stringify({
-            path: dropboxPath
-          })
+          'Dropbox-API-Arg': apiArg
         },
         responseType: 'stream'
       });
