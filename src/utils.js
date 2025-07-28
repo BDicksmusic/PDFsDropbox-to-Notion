@@ -48,6 +48,12 @@ function isValidAudioFormat(filename) {
   return config.processing.supportedFormats.includes(extension);
 }
 
+// Validate document format
+function isValidDocumentFormat(filename) {
+  const extension = path.extname(filename).toLowerCase().substring(1);
+  return config.processing.supportedDocumentFormats.includes(extension);
+}
+
 // Validate file size
 function isValidFileSize(sizeInBytes) {
   const maxSizeInBytes = config.processing.maxFileSizeMB * 1024 * 1024;
@@ -124,6 +130,7 @@ module.exports = {
   ensureTempDir,
   cleanupTempFile,
   isValidAudioFormat,
+  isValidDocumentFormat,
   isValidFileSize,
   generateUniqueFilename,
   extractFileInfo,

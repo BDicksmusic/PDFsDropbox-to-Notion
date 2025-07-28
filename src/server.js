@@ -4,6 +4,8 @@ const { logger, ensureTempDir } = require('./utils');
 const DropboxHandler = require('./dropbox-handler');
 const TranscriptionHandler = require('./transcription');
 const NotionHandler = require('./notion-handler');
+const DocumentHandler = require('./document-handler');
+const NotionPDFHandler = require('./notion-pdf-handler');
 
 class AutomationServer {
   constructor() {
@@ -11,6 +13,8 @@ class AutomationServer {
     this.dropboxHandler = new DropboxHandler();
     this.transcriptionHandler = new TranscriptionHandler();
     this.notionHandler = new NotionHandler();
+    this.documentHandler = new DocumentHandler();
+    this.notionPDFHandler = new NotionPDFHandler();
     
     // Add webhook deduplication tracking
     this.processedWebhooks = new Set();
@@ -287,11 +291,11 @@ class AutomationServer {
           
           if (file.shareableUrl) {
             logger.info(`Using URL-based duplicate check for ${file.fileName}: ${file.shareableUrl}`);
-            alreadyProcessed = await this.notionHandler.isFileAlreadyProcessedByUrl(file.shareableUrl);
+            alreadyProcessed = await this.isFileAlreadyProcessedByUrl(file.shareableUrl, file.fileName);
             logger.info(`URL-based check for ${file.fileName}: ${alreadyProcessed ? 'already processed' : 'new file'}`);
           } else {
             logger.warn(`No shareable URL available for ${file.fileName}, falling back to filename check`);
-            alreadyProcessed = await this.notionHandler.isFileAlreadyProcessed(file.fileName);
+            alreadyProcessed = await this.isFileAlreadyProcessedByFilename(file.fileName);
             logger.info(`Filename-based check for ${file.fileName}: ${alreadyProcessed ? 'already processed' : 'new file'}`);
           }
           
@@ -332,7 +336,74 @@ class AutomationServer {
     }
   }
 
-  // Process a single file through the entire pipeline
+  // Check if file is already processed by URL (checks both databases)
+  async isFileAlreadyProcessedByUrl(shareableUrl, fileName) {
+    try {
+      // Check audio database
+      const audioProcessed = await this.notionHandler.isFileAlreadyProcessedByUrl(shareableUrl);
+      if (audioProcessed) {
+        logger.info(`File ${fileName} already processed in audio database`);
+        return true;
+      }
+
+      // Check PDF database
+      const pdfProcessed = await this.notionPDFHandler.isFileAlreadyProcessedByUrl(shareableUrl);
+      if (pdfProcessed) {
+        logger.info(`File ${fileName} already processed in PDF database`);
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      logger.error(`Error checking if file ${fileName} is processed by URL:`, error.message);
+      return false;
+    }
+  }
+
+  // Check if file is already processed by filename (checks both databases)
+  async isFileAlreadyProcessedByFilename(fileName) {
+    try {
+      // Check audio database
+      const audioProcessed = await this.notionHandler.isFileAlreadyProcessed(fileName);
+      if (audioProcessed) {
+        logger.info(`File ${fileName} already processed in audio database`);
+        return true;
+      }
+
+      // Check PDF database (using filename search)
+      const pdfProcessed = await this.notionPDFHandler.searchByFileName(fileName);
+      if (pdfProcessed.length > 0) {
+        logger.info(`File ${fileName} already processed in PDF database`);
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      logger.error(`Error checking if file ${fileName} is processed by filename:`, error.message);
+      return false;
+    }
+  }
+
+  // Determine file type and route to appropriate processor
+  getFileProcessor(fileName) {
+    const extension = fileName.toLowerCase().split('.').pop();
+    
+    // Audio files
+    const audioExtensions = ['mp3', 'wav', 'm4a', 'flac', 'aac', 'ogg'];
+    if (audioExtensions.includes(extension)) {
+      return 'audio';
+    }
+    
+    // Document files
+    const documentExtensions = ['pdf', 'jpg', 'jpeg', 'png', 'bmp', 'tiff', 'tif', 'webp', 'docx', 'doc'];
+    if (documentExtensions.includes(extension)) {
+      return 'document';
+    }
+    
+    return 'unknown';
+  }
+
+  // Process a single file through the appropriate pipeline
   async processFile(file, customName = null, forceReprocess = false) {
     try {
       logger.info(`Processing file: ${file.fileName}${forceReprocess ? ' (force reprocess)' : ''}`);
@@ -347,6 +418,38 @@ class AutomationServer {
       if (!fs.existsSync(file.localPath)) {
         throw new Error(`File ${file.fileName} does not exist at path: ${file.localPath}`);
       }
+      
+      // Determine file type and route to appropriate processor
+      const fileType = this.getFileProcessor(file.fileName);
+      
+      if (fileType === 'audio') {
+        return await this.processAudioFile(file, customName, forceReprocess);
+      } else if (fileType === 'document') {
+        return await this.processDocumentFile(file, customName, forceReprocess);
+      } else {
+        throw new Error(`Unsupported file type: ${file.fileName}`);
+      }
+
+    } catch (error) {
+      logger.error(`Failed to process file ${file.fileName}:`, error);
+      
+      // Clean up file even if processing failed
+      try {
+        if (file.localPath) {
+          await this.dropboxHandler.cleanupFile(file.localPath);
+        }
+      } catch (cleanupError) {
+        logger.warn(`Failed to cleanup file ${file.localPath}:`, cleanupError.message);
+      }
+      
+      throw error;
+    }
+  }
+
+  // Process audio file through transcription pipeline
+  async processAudioFile(file, customName = null, forceReprocess = false) {
+    try {
+      logger.info(`Processing audio file: ${file.fileName}`);
       
       // Step 1: Transcribe and extract key points
       const audioData = await this.transcriptionHandler.processAudioFile(
@@ -370,7 +473,7 @@ class AutomationServer {
       // Step 3: Clean up temporary file
       await this.dropboxHandler.cleanupFile(file.localPath);
 
-      logger.info(`Successfully processed ${file.fileName} -> Notion page: ${notionPage.id}`);
+      logger.info(`Successfully processed audio file ${file.fileName} -> Notion page: ${notionPage.id}`);
       
       return {
         fileName: file.fileName,
@@ -378,21 +481,64 @@ class AutomationServer {
         notionPageId: notionPage.id,
         summary: audioData.summary,
         keyPoints: audioData.keyPoints,
-        actionItems: audioData.actionItems
+        actionItems: audioData.actionItems,
+        fileType: 'audio'
       };
 
     } catch (error) {
-      logger.error(`Failed to process file ${file.fileName}:`, error);
+      logger.error(`Failed to process audio file ${file.fileName}:`, error);
+      throw error;
+    }
+  }
+
+  // Process document file through document pipeline
+  async processDocumentFile(file, customName = null, forceReprocess = false) {
+    try {
+      logger.info(`Processing document file: ${file.fileName}`);
       
-      // Clean up file even if processing failed
-      try {
-        if (file.localPath) {
-          await this.dropboxHandler.cleanupFile(file.localPath);
-        }
-      } catch (cleanupError) {
-        logger.warn(`Failed to cleanup file ${file.localPath}:`, cleanupError.message);
+      // Step 1: Extract text and analyze content
+      const documentData = await this.documentHandler.processDocument(
+        file.localPath, 
+        file.fileName
+      );
+
+      // Only proceed to Notion if processing was successful
+      if (!documentData || !documentData.summary) {
+        throw new Error(`Document processing failed for ${file.fileName} - no data or summary generated`);
       }
+
+      // Add the shareableUrl to documentData for Notion processing
+      if (file.shareableUrl) {
+        documentData.shareableUrl = file.shareableUrl;
+      }
+
+      // Step 2: Create Notion page in PDF database
+      const notionPage = await this.notionPDFHandler.createOrUpdatePage(documentData, customName, forceReprocess);
+
+      // Step 3: Upload file to Notion if enabled
+      let uploadedFile = null;
+      if (config.documents.uploadToNotion) {
+        uploadedFile = await this.notionPDFHandler.uploadFileToNotion(file.localPath, file.fileName);
+      }
+
+      // Step 4: Clean up temporary file
+      await this.dropboxHandler.cleanupFile(file.localPath);
+
+      logger.info(`Successfully processed document file ${file.fileName} -> Notion page: ${notionPage.id}`);
       
+      return {
+        fileName: file.fileName,
+        customName: customName,
+        notionPageId: notionPage.id,
+        summary: documentData.summary,
+        keyPoints: documentData.keyPoints,
+        actionItems: documentData.actionItems,
+        fileType: 'document',
+        uploadedFile: uploadedFile
+      };
+
+    } catch (error) {
+      logger.error(`Failed to process document file ${file.fileName}:`, error);
       throw error;
     }
   }
@@ -426,11 +572,11 @@ class AutomationServer {
         let alreadyProcessed = false;
         
         if (shareableUrl) {
-          alreadyProcessed = await this.notionHandler.isFileAlreadyProcessedByUrl(shareableUrl);
+          alreadyProcessed = await this.isFileAlreadyProcessedByUrl(shareableUrl, file.fileName);
           logger.info(`Manual processing URL-based check: ${alreadyProcessed ? 'already processed' : 'new file'}`);
         } else {
           logger.warn(`No shareable URL for manual processing, falling back to filename check`);
-          alreadyProcessed = await this.notionHandler.isFileAlreadyProcessed(file.fileName);
+          alreadyProcessed = await this.isFileAlreadyProcessedByFilename(file.fileName);
           logger.info(`Manual processing filename-based check: ${alreadyProcessed ? 'already processed' : 'new file'}`);
         }
         
@@ -467,13 +613,22 @@ class AutomationServer {
       status.services.dropboxError = error.message;
     }
 
-    // Check Notion connection
+    // Check Notion connection (audio database)
     try {
       await this.notionHandler.testConnection();
-      status.services.notion = 'connected';
+      status.services.notionAudio = 'connected';
     } catch (error) {
-      status.services.notion = 'error';
-      status.services.notionError = error.message;
+      status.services.notionAudio = 'error';
+      status.services.notionAudioError = error.message;
+    }
+
+    // Check Notion connection (PDF database)
+    try {
+      await this.notionPDFHandler.testConnection();
+      status.services.notionPDF = 'connected';
+    } catch (error) {
+      status.services.notionPDF = 'error';
+      status.services.notionPDFError = error.message;
     }
 
     // Check OpenAI connection (simple test)
