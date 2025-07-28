@@ -34,6 +34,11 @@ class AutomationServer {
     this.lastResetDate = new Date().toDateString();
     this.processingQueue = new Map(); // Track files currently being processed
 
+    // Add periodic scan option
+    this.periodicScanEnabled = process.env.PERIODIC_SCAN_ENABLED === 'true';
+    this.periodicScanInterval = parseInt(process.env.PERIODIC_SCAN_INTERVAL_MINUTES) || 30; // Default 30 minutes
+    this.lastScanTime = null;
+
     this.setupMiddleware();
     this.setupRoutes();
     this.setupUrlMonitoring();
@@ -156,6 +161,64 @@ class AutomationServer {
         res.json(result);
       } catch (error) {
         logger.error('Force reprocess error', { error: error.message });
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // Force scan endpoint - process all files in folders
+    this.app.post('/force-scan', async (req, res) => {
+      try {
+        logger.info('Force scan requested - processing all files in monitored folders');
+        
+        // Clear the recent processing cache to allow reprocessing
+        this.dropboxHandler.recentlyProcessedFiles.clear();
+        logger.info('Cleared recent processing cache');
+        
+        // Get all files from both folders
+        const files = await this.dropboxHandler.listFiles();
+        const allFiles = files.filter(entry => entry['.tag'] === 'file');
+        
+        logger.info(`Found ${allFiles.length} files to process`);
+        
+        // Process all files through the webhook handler
+        const processedFiles = await this.dropboxHandler.processWebhookNotification({
+          list_folder: { accounts: ['force-scan'] }
+        });
+        
+        // Process each file
+        const results = [];
+        for (const file of processedFiles) {
+          if (file) {
+            try {
+              const result = await this.processFile(file, null, false);
+              results.push(result);
+            } catch (error) {
+              logger.error(`Failed to process file ${file.fileName}:`, error.message);
+              results.push({
+                fileName: file.fileName,
+                error: error.message,
+                skipped: true,
+                reason: error.message
+              });
+            }
+          }
+        }
+        
+        res.json({
+          status: 'success',
+          message: `Force scan completed. Processed ${results.length} files.`,
+          filesFound: allFiles.length,
+          filesProcessed: results.length,
+          results: results.filter(r => r).map(r => ({
+            fileName: r.fileName,
+            status: r.skipped ? 'skipped' : 'processed',
+            reason: r.reason,
+            notionPageId: r.notionPageId
+          }))
+        });
+        
+      } catch (error) {
+        logger.error('Force scan error:', error);
         res.status(500).json({ error: error.message });
       }
     });
@@ -785,6 +848,11 @@ class AutomationServer {
         logger.info(`Server started on port ${port}`);
         logger.info(`Health check: http://localhost:${port}/health`);
         logger.info(`Webhook URL: http://localhost:${port}/webhook`);
+        
+        // Start periodic scan if enabled
+        if (this.periodicScanEnabled) {
+          this.startPeriodicScan();
+        }
       });
 
     } catch (error) {
@@ -927,6 +995,53 @@ class AutomationServer {
     }
 
     return false;
+  }
+
+  // Start periodic file scanning
+  startPeriodicScan() {
+    logger.info(`Starting periodic scan every ${this.periodicScanInterval} minutes`);
+    
+    // Run initial scan after 1 minute
+    setTimeout(() => this.runPeriodicScan(), 60000);
+    
+    // Then run periodically
+    setInterval(() => this.runPeriodicScan(), this.periodicScanInterval * 60 * 1000);
+  }
+
+  // Run a periodic scan
+  async runPeriodicScan() {
+    try {
+      logger.info('Running periodic file scan');
+      
+      // Clear the recent processing cache for periodic scans
+      this.dropboxHandler.recentlyProcessedFiles.clear();
+      
+      // Process files through webhook handler
+      const processedFiles = await this.dropboxHandler.processWebhookNotification({
+        list_folder: { accounts: ['periodic-scan'] }
+      });
+      
+      if (processedFiles.length > 0) {
+        let processedCount = 0;
+        for (const file of processedFiles) {
+          if (file) {
+            try {
+              await this.processFile(file, null, false);
+              processedCount++;
+            } catch (error) {
+              logger.error(`Failed to process file ${file.fileName}:`, error.message);
+            }
+          }
+        }
+        logger.info(`Periodic scan completed: ${processedCount} files processed`);
+      } else {
+        logger.info('Periodic scan completed: No new files to process');
+      }
+      
+      this.lastScanTime = new Date();
+    } catch (error) {
+      logger.error('Periodic scan error:', error);
+    }
   }
 }
 
