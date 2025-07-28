@@ -153,9 +153,17 @@ class DropboxHandler {
       logger.info(`Checking for audio files in: ${this.audioFolderPath.toLowerCase()}`);
       logger.info(`Checking for PDF files in: ${this.pdfFolderPath.toLowerCase()}`);
       
-      // Debug: Log all file paths to see what we're getting
-      const allFilePaths = files.filter(entry => entry['.tag'] === 'file').map(entry => entry.path_lower);
-      logger.info(`All file paths found: ${JSON.stringify(allFilePaths)}`);
+             // Debug: Log all file paths to see what we're getting
+       const allFilePaths = files.filter(entry => entry['.tag'] === 'file').map(entry => entry.path_lower);
+       logger.info(`All file paths found: ${JSON.stringify(allFilePaths)}`);
+       
+       // Debug: Log original paths vs lowercase paths
+       const fileDetails = files.filter(entry => entry['.tag'] === 'file').map(entry => ({
+         original: entry.path_display,
+         lower: entry.path_lower,
+         name: entry.name
+       }));
+       logger.info(`File details: ${JSON.stringify(fileDetails)}`);
       
       // Debug: Log which files match each folder
       if (audioFiles.length > 0) {
@@ -402,10 +410,32 @@ class DropboxHandler {
         });
       });
 
-    } catch (error) {
-      logger.error(`Failed to download file ${fileName}:`, error.response?.data || error.message);
-      throw error;
-    }
+         } catch (error) {
+       // Try to extract the actual error message from the response
+       let errorMessage = error.message;
+       if (error.response?.data) {
+         try {
+           // If it's a stream, try to read it
+           if (error.response.data.pipe) {
+             let errorData = '';
+             error.response.data.on('data', chunk => {
+               errorData += chunk.toString();
+             });
+             error.response.data.on('end', () => {
+               logger.error(`Dropbox API error details: ${errorData}`);
+             });
+           } else {
+             errorMessage = JSON.stringify(error.response.data);
+           }
+         } catch (parseError) {
+           errorMessage = `Response data: ${JSON.stringify(error.response.data)}`;
+         }
+       }
+       
+       logger.error(`Failed to download file ${fileName}: ${errorMessage}`);
+       logger.error(`Request details - Path: ${dropboxPath}, Status: ${error.response?.status}`);
+       throw error;
+     }
   }
 
   // Get file metadata
