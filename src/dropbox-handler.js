@@ -386,7 +386,13 @@ class DropboxHandler {
           'Authorization': `Bearer ${this.accessToken}`,
           'Dropbox-API-Arg': apiArg
         },
-        responseType: 'stream'
+        responseType: 'stream',
+        transformRequest: [(data, headers) => {
+          // Remove any Content-Type header that axios might add
+          delete headers['Content-Type'];
+          return data;
+        }],
+        validateStatus: () => true
       });
 
       // Create write stream
