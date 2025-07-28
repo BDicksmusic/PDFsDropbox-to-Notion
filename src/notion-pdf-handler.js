@@ -73,8 +73,8 @@ class NotionPDFHandler {
     // Add Status property
     properties['Status'] = await this.buildStatusProperty('📥');
 
-    // Add link tags as relation
-    properties['Link Tags'] = await this.buildFileTypeLinkTagsRelation(metadata?.fileType);
+    // Note: Link Tags property temporarily disabled for testing
+    // properties['Link Tags'] = await this.buildFileTypeLinkTagsRelation(metadata?.fileType);
 
     return {
       parent: {

@@ -134,24 +134,60 @@ class DropboxHandler {
       // When we receive a webhook, we need to check both folders for new files
       logger.info('Checking folders for files after webhook notification');
       
-      const files = await this.listFiles();
-      
-      // Get all files in both monitored folders
-      const audioFiles = files.filter(entry => 
-        entry['.tag'] === 'file' && 
-        entry.path_lower.startsWith(this.audioFolderPath.toLowerCase())
-      );
+             const files = await this.listFiles();
+       
+       // Debug: Show all files before filtering
+       const allFiles = files.filter(entry => entry['.tag'] === 'file');
+       logger.info(`📁 All files found before filtering:`);
+       allFiles.forEach((file, index) => {
+         logger.info(`  ${index + 1}. ${file.name} (path: ${file.path_lower})`);
+       });
+       
+                             // Get all files and filter by extension instead of folder path
+        const audioExtensions = ['mp3', 'wav', 'm4a', 'flac', 'aac', 'ogg'];
+        const documentExtensions = ['pdf', 'jpg', 'jpeg', 'png', 'bmp', 'tiff', 'tif', 'webp', 'docx', 'doc'];
+        
+        const audioFiles = files.filter(entry => {
+          const isFile = entry['.tag'] === 'file';
+          if (!isFile) return false;
+          
+          const extension = entry.name.toLowerCase().split('.').pop();
+          const isAudioFile = audioExtensions.includes(extension);
+          
+          // Debug logging for audio files
+          logger.info(`🔍 Audio extension check: "${entry.name}" (${extension}) = ${isAudioFile}`);
+          if (!isAudioFile) {
+            logger.debug(`❌ Not audio file: ${entry.path_lower} (extension: ${extension})`);
+          } else {
+            logger.info(`✅ Audio file found: ${entry.name} (${extension})`);
+          }
+          
+          return isAudioFile;
+        });
 
-      const pdfFiles = files.filter(entry => 
-        entry['.tag'] === 'file' && 
-        entry.path_lower.startsWith(this.pdfFolderPath.toLowerCase())
-      );
+        const pdfFiles = files.filter(entry => {
+          const isFile = entry['.tag'] === 'file';
+          if (!isFile) return false;
+          
+          const extension = entry.name.toLowerCase().split('.').pop();
+          const isDocumentFile = documentExtensions.includes(extension);
+          
+          // Debug logging for document files
+          logger.info(`🔍 Document extension check: "${entry.name}" (${extension}) = ${isDocumentFile}`);
+          if (!isDocumentFile) {
+            logger.debug(`❌ Not document file: ${entry.path_lower} (extension: ${extension})`);
+          } else {
+            logger.info(`✅ Document file found: ${entry.name} (${extension})`);
+          }
+          
+          return isDocumentFile;
+        });
 
-      logger.info(`Found ${audioFiles.length} files in audio folder, ${pdfFiles.length} files in PDF folder`);
-      
-      // Debug: Log the paths we're checking against
-      logger.info(`Checking for audio files in: ${this.audioFolderPath.toLowerCase()}`);
-      logger.info(`Checking for PDF files in: ${this.pdfFolderPath.toLowerCase()}`);
+             logger.info(`Found ${audioFiles.length} audio files, ${pdfFiles.length} document files (filtered by extension)`);
+       
+       // Debug: Log the extensions we're looking for
+       logger.info(`Audio extensions: ${audioExtensions.join(', ')}`);
+       logger.info(`Document extensions: ${documentExtensions.join(', ')}`);
       
              // Debug: Log all file paths to see what we're getting
        const allFilePaths = files.filter(entry => entry['.tag'] === 'file').map(entry => entry.path_lower);
@@ -173,19 +209,21 @@ class DropboxHandler {
         logger.info(`PDF files found: ${pdfFiles.map(f => f.path_lower).join(', ')}`);
       }
 
-      // Process all files found - let duplicate detection handle whether to create new entries
-      logger.info(`Found ${audioFiles.length} audio files, ${pdfFiles.length} PDF files to process`);
+             // Process all files found - let duplicate detection handle whether to create new entries
+       logger.info(`Ready to process: ${audioFiles.length} audio files, ${pdfFiles.length} document files`);
 
       const processedFiles = [];
       
       // Process audio files
       for (const file of audioFiles) {
         try {
+          logger.info(`Attempting to process audio file: ${file.path_lower} (${file.name})`);
           const processedFile = await this.processFile(file, 'audio');
           if (processedFile) {
             processedFiles.push(processedFile);
+            logger.info(`Successfully processed audio file: ${file.name}`);
           } else {
-            logger.info(`Skipping audio file ${file.path_lower}: already processed or failed validation`);
+            logger.warn(`Skipping audio file ${file.path_lower}: already processed or failed validation`);
           }
         } catch (error) {
           logger.error(`Failed to process audio file ${file.path_lower}:`, error.message);
@@ -195,11 +233,13 @@ class DropboxHandler {
       // Process PDF files
       for (const file of pdfFiles) {
         try {
+          logger.info(`Attempting to process PDF file: ${file.path_lower} (${file.name})`);
           const processedFile = await this.processFile(file, 'document');
           if (processedFile) {
             processedFiles.push(processedFile);
+            logger.info(`Successfully processed PDF file: ${file.name}`);
           } else {
-            logger.info(`Skipping PDF file ${file.path_lower}: already processed or failed validation`);
+            logger.warn(`Skipping PDF file ${file.path_lower}: already processed or failed validation`);
           }
         } catch (error) {
           logger.error(`Failed to process PDF file ${file.path_lower}:`, error.message);
@@ -221,18 +261,19 @@ class DropboxHandler {
     const fileName = path.basename(filePath);
     const sanitizedFileName = sanitizeFilename(fileName);
 
-    logger.info(`Checking file: ${fileName} (type: ${fileType || 'auto-detect'})`);
+    logger.info(`🔍 Processing file: ${fileName} (type: ${fileType || 'auto-detect'}, size: ${fileEntry.size} bytes)`);
+    logger.debug(`File details - Original path: ${originalPath}, Lower path: ${filePath}`);
 
     // Check if we're currently processing this file
     if (this.processingLocks.has(filePath)) {
-      logger.info(`File ${fileName} is currently being processed, skipping`);
+      logger.info(`⏳ File ${fileName} is currently being processed, skipping`);
       return null;
     }
 
     // Check if we've recently processed this file (within last 2 minutes)
     const recentlyProcessed = this.recentlyProcessedFiles.get(filePath);
     if (recentlyProcessed && (Date.now() - recentlyProcessed) < 2 * 60 * 1000) {
-      logger.info(`File ${fileName} was recently processed, skipping`);
+      logger.info(`⏭️ File ${fileName} was recently processed, skipping`);
       return null;
     }
 
@@ -243,22 +284,25 @@ class DropboxHandler {
       // Auto-detect file type if not provided
       if (!fileType) {
         fileType = this.detectFileType(fileName);
+        logger.debug(`🔍 Auto-detected file type: ${fileType} for ${fileName}`);
       }
 
       // Validate file format based on type
       if (fileType === 'audio' && !isValidAudioFormat(fileName)) {
-        logger.warn(`Skipping file ${fileName}: unsupported audio format`);
+        logger.warn(`❌ Skipping file ${fileName}: unsupported audio format`);
         return null;
       } else if (fileType === 'document' && !this.isValidDocumentFormat(fileName)) {
-        logger.warn(`Skipping file ${fileName}: unsupported document format`);
+        logger.warn(`❌ Skipping file ${fileName}: unsupported document format`);
         return null;
       }
 
       // Validate file size
       if (!isValidFileSize(fileEntry.size)) {
-        logger.warn(`Skipping file ${fileName}: file too large (${fileEntry.size} bytes)`);
+        logger.warn(`❌ Skipping file ${fileName}: file too large (${fileEntry.size} bytes)`);
         return null;
       }
+
+      logger.debug(`✅ File ${fileName} passed validation checks`);
 
       // Check for problematic characters in filename
       const problematicChars = /[<>:"/\\|?*\x00-\x1f]/g;
