@@ -112,6 +112,147 @@ class DocumentHandler {
       };
     } catch (error) {
       logger.error(`Failed to extract text from PDF:`, error);
+      
+      // Check if it's a specific PDF parsing error
+      if (error.name === 'InvalidPDFException') {
+        logger.warn(`PDF appears to have invalid structure - attempting AI vision extraction for image-based PDF`);
+        
+        // Try AI vision extraction for image-based PDFs
+        try {
+          const aiExtractedText = await this.extractTextFromPDFWithAI(filePath);
+          return {
+            text: aiExtractedText,
+            metadata: {
+              pageCount: 1, // Assume single page for now
+              textLength: aiExtractedText.length,
+              info: { Title: path.basename(filePath) },
+              extractionMethod: 'ai_vision',
+              originalError: error.message
+            }
+          };
+        } catch (aiError) {
+          logger.error(`AI vision extraction also failed:`, aiError.message);
+          
+          // Return a fallback response instead of throwing
+          return {
+            text: `[PDF Text Extraction Failed]\n\nThis PDF could not be processed due to its structure. This commonly happens with:\n- Scanned documents (image-based PDFs)\n- Password-protected PDFs\n- Corrupted PDF files\n- PDFs with unusual formatting\n\nFile: ${path.basename(filePath)}\nError: ${error.message}\n\nAI Vision extraction also failed: ${aiError.message}`,
+            metadata: {
+              pageCount: 0,
+              textLength: 0,
+              info: { Title: path.basename(filePath) },
+              extractionFailed: true,
+              error: error.message,
+              aiExtractionFailed: true,
+              aiError: aiError.message
+            }
+          };
+        }
+      }
+      
+      // For other errors, still throw
+      throw error;
+    }
+  }
+
+  // Extract text from image-based PDFs using AI vision
+  async extractTextFromPDFWithAI(filePath) {
+    try {
+      logger.info(`Attempting AI vision extraction for image-based PDF: ${path.basename(filePath)}`);
+      
+      const openai = require('openai');
+      const client = new openai.OpenAI({
+        apiKey: config.openai.apiKey
+      });
+
+      // Convert PDF to image (first page only for now)
+      const pdfImageBuffer = await this.convertPDFToImage(filePath);
+      
+      // Use OpenAI's GPT-4 Vision to extract text
+      const response = await client.chat.completions.create({
+        model: 'gpt-4o-mini', // Use GPT-4o-mini for better performance and lower cost
+        messages: [
+          {
+            role: 'system',
+            content: 'You are an expert at extracting and transcribing text from images. Extract all visible text from the image, maintaining the original formatting and structure. If there are multiple columns, sections, or different text styles, preserve them in your transcription. Return only the extracted text without any additional commentary.'
+          },
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: 'Please extract all the text from this image. Maintain the original formatting, structure, and layout. If there are headers, subheaders, bullet points, or different sections, preserve them in your transcription.'
+              },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:image/png;base64,${pdfImageBuffer.toString('base64')}`
+                }
+              }
+            ]
+          }
+        ],
+        max_tokens: 4000,
+        temperature: 0.1
+      });
+
+      const extractedText = response.choices[0].message.content;
+      
+      logger.info(`AI vision extraction completed: ${extractedText.length} characters extracted`);
+      
+      return extractedText;
+      
+    } catch (error) {
+      logger.error(`AI vision extraction failed:`, error);
+      throw error;
+    }
+  }
+
+  // Convert PDF to image for AI processing
+  async convertPDFToImage(filePath) {
+    try {
+      logger.info(`Converting PDF to image for AI processing: ${path.basename(filePath)}`);
+      
+      const pdf2pic = require('pdf2pic');
+      const path = require('path');
+      const fs = require('fs');
+      
+      // Ensure temp directory exists
+      const tempDir = './temp';
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+      
+      const options = {
+        density: 300, // High resolution for better text extraction
+        saveFilename: "pdf_page",
+        savePath: tempDir,
+        format: "png",
+        width: 2048,
+        height: 2048
+      };
+      
+      const convert = pdf2pic.fromPath(filePath, options);
+      
+      // Convert first page only for now (can be extended to multiple pages)
+      const pageData = await convert(1);
+      
+      // Read the generated image file
+      const imagePath = path.join(tempDir, 'pdf_page.1.png');
+      const imageBuffer = fs.readFileSync(imagePath);
+      
+      // Clean up the temporary image file
+      try {
+        fs.unlinkSync(imagePath);
+      } catch (cleanupError) {
+        logger.warn(`Failed to cleanup temporary image file:`, cleanupError.message);
+      }
+      
+      logger.info(`PDF converted to image successfully: ${imageBuffer.length} bytes`);
+      
+      return imageBuffer;
+      
+    } catch (error) {
+      logger.error(`PDF to image conversion failed:`, error);
       throw error;
     }
   }
