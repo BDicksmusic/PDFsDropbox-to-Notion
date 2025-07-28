@@ -71,7 +71,7 @@ class NotionPDFHandler {
     }
 
     // Add Status property
-    properties['Status'] = await this.buildStatusProperty('');
+    properties['Status'] = await this.buildStatusProperty('📥');
 
     // Add link tags as relation
     properties['Link Tags'] = await this.buildFileTypeLinkTagsRelation(metadata?.fileType);
@@ -155,16 +155,25 @@ class NotionPDFHandler {
       }
 
       if (statusProperty.type === 'status') {
-        return { status: { name: statusValue } };
+        // For status fields, we need to provide a valid status name
+        // If statusValue is empty, use a default
+        const statusName = statusValue || '📥';
+        logger.info(`Using status name: ${statusName} for Status property`);
+        logger.debug(`Available status options:`, statusProperty.status?.options || 'No options found');
+        return { status: { name: statusName } };
       } else if (statusProperty.type === 'select') {
-        return { select: { name: statusValue } };
+        // For select fields, we need to provide a valid select option
+        const selectName = statusValue || '📥';
+        logger.info(`Using select name: ${selectName} for Status property`);
+        logger.debug(`Available select options:`, statusProperty.select?.options || 'No options found');
+        return { select: { name: selectName } };
       } else {
         return {
           rich_text: [
             {
               type: 'text',
               text: {
-                content: statusValue
+                content: statusValue || '📥'
               }
             }
           ]
@@ -582,6 +591,10 @@ class NotionPDFHandler {
         url: `${this.baseURL}/databases/${this.databaseId}`,
         headers: this.getHeaders()
       });
+
+      // Log the schema for debugging
+      logger.info('PDF Database Schema:', Object.keys(response.data.properties));
+      logger.debug('PDF Database Schema Details:', JSON.stringify(response.data.properties, null, 2));
 
       return response.data.properties;
     } catch (error) {

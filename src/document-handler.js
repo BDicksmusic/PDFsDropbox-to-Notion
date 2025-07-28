@@ -213,7 +213,6 @@ class DocumentHandler {
       logger.info(`Converting PDF to image for AI processing: ${path.basename(filePath)}`);
       
       const pdf2pic = require('pdf2pic');
-      const path = require('path');
       const fs = require('fs');
       
       // Ensure temp directory exists
