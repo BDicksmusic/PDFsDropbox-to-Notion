@@ -212,39 +212,23 @@ class DocumentHandler {
     try {
       logger.info(`Converting PDF to image for AI processing: ${path.basename(filePath)}`);
       
-      const pdf2pic = require('pdf2pic');
-      const fs = require('fs');
+      const { pdfToPng } = require('pdf-to-png-converter');
       
-      // Ensure temp directory exists
-      const tempDir = './temp';
-      if (!fs.existsSync(tempDir)) {
-        fs.mkdirSync(tempDir, { recursive: true });
+      // Convert PDF to PNG images (first page only)
+      const pngPages = await pdfToPng(filePath, {
+        disableFontFace: true,
+        useSystemFonts: false,
+        viewportScale: 2.0, // Higher resolution for better text extraction
+        pagesToProcess: [1], // Only process first page
+        strictPagesToProcess: false
+      });
+      
+      if (pngPages.length === 0) {
+        throw new Error('No pages could be converted from PDF');
       }
       
-      const options = {
-        density: 300, // High resolution for better text extraction
-        saveFilename: "pdf_page",
-        savePath: tempDir,
-        format: "png",
-        width: 2048,
-        height: 2048
-      };
-      
-      const convert = pdf2pic.fromPath(filePath, options);
-      
-      // Convert first page only for now (can be extended to multiple pages)
-      const pageData = await convert(1);
-      
-      // Read the generated image file
-      const imagePath = path.join(tempDir, 'pdf_page.1.png');
-      const imageBuffer = fs.readFileSync(imagePath);
-      
-      // Clean up the temporary image file
-      try {
-        fs.unlinkSync(imagePath);
-      } catch (cleanupError) {
-        logger.warn(`Failed to cleanup temporary image file:`, cleanupError.message);
-      }
+      // Get the first page as a buffer
+      const imageBuffer = pngPages[0].content;
       
       logger.info(`PDF converted to image successfully: ${imageBuffer.length} bytes`);
       

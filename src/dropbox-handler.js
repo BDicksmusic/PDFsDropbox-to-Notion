@@ -361,7 +361,10 @@ class DropboxHandler {
       return response.data.url;
     } catch (error) {
       // If the link already exists, get the existing link
-      if (error.response?.data?.error?.error_summary === 'shared_link_already_exists/') {
+      const errorTag = error.response?.data?.error?.['.tag'];
+      const errorSummary = error.response?.data?.error_summary;
+      
+      if (errorTag === 'shared_link_already_exists' || errorSummary?.includes('shared_link_already_exists')) {
         logger.info(`Shared link already exists for ${filePath}, getting existing link`);
         
         try {
