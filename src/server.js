@@ -28,6 +28,12 @@ class AutomationServer {
     // Add background mode option
     this.backgroundMode = process.env.BACKGROUND_MODE === 'true';
 
+    // Add rate limiting and cost protection
+    this.apiCallCount = 0;
+    this.dailyApiLimit = parseInt(process.env.DAILY_API_LIMIT) || 1000; // Default 1000 calls per day
+    this.lastResetDate = new Date().toDateString();
+    this.processingQueue = new Map(); // Track files currently being processed
+
     this.setupMiddleware();
     this.setupRoutes();
     this.setupUrlMonitoring();
@@ -161,6 +167,25 @@ class AutomationServer {
         res.json(status);
       } catch (error) {
         logger.error('Status check error', { error: error.message });
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // API usage status endpoint
+    this.app.get('/api-status', (req, res) => {
+      try {
+        const status = {
+          timestamp: new Date().toISOString(),
+          apiCallCount: this.apiCallCount,
+          dailyApiLimit: this.dailyApiLimit,
+          remainingCalls: this.dailyApiLimit - this.apiCallCount,
+          lastResetDate: this.lastResetDate,
+          processingQueueSize: this.processingQueue.size,
+          currentlyProcessing: Array.from(this.processingQueue.keys())
+        };
+        res.json(status);
+      } catch (error) {
+        logger.error('API status check error', { error: error.message });
         res.status(500).json({ error: error.message });
       }
     });
@@ -389,23 +414,28 @@ class AutomationServer {
   // Check if file is already processed by URL (checks both databases)
   async isFileAlreadyProcessedByUrl(shareableUrl, fileName) {
     try {
+      // Add extra logging for debugging
+      logger.info(`Checking if file is already processed: ${fileName} with URL: ${shareableUrl}`);
+
       // Check audio database
       const audioProcessed = await this.notionHandler.isFileAlreadyProcessedByUrl(shareableUrl);
       if (audioProcessed) {
-        logger.info(`File ${fileName} already processed in audio database`);
+        logger.info(`✅ File ${fileName} already processed in audio database`);
         return true;
       }
 
       // Check PDF database
       const pdfProcessed = await this.notionPDFHandler.isFileAlreadyProcessedByUrl(shareableUrl);
       if (pdfProcessed) {
-        logger.info(`File ${fileName} already processed in PDF database`);
+        logger.info(`✅ File ${fileName} already processed in PDF database`);
         return true;
       }
 
+      logger.info(`🆕 File ${fileName} is new - not found in either database`);
       return false;
     } catch (error) {
-      logger.error(`Error checking if file ${fileName} is processed by URL:`, error.message);
+      logger.error(`❌ Error checking if file ${fileName} is processed by URL:`, error.message);
+      // On error, assume file is NOT processed to be safe (but log the error)
       return false;
     }
   }
@@ -456,6 +486,21 @@ class AutomationServer {
   // Process a single file through the appropriate pipeline
   async processFile(file, customName = null, forceReprocess = false) {
     try {
+      // Check API rate limits first
+      if (!this.checkApiLimits()) {
+        throw new Error(`Daily API limit of ${this.dailyApiLimit} calls reached. Processing paused.`);
+      }
+
+      // Check if file is already being processed
+      const fileKey = file.shareableUrl || file.fileName;
+      if (this.processingQueue.has(fileKey)) {
+        logger.warn(`File ${file.fileName} is already being processed, skipping duplicate`);
+        return null;
+      }
+
+      // Add to processing queue
+      this.processingQueue.set(fileKey, Date.now());
+
       logger.info(`Processing file: ${file.fileName}${forceReprocess ? ' (force reprocess)' : ''}`);
       
       // Validate file has a local path
@@ -471,13 +516,19 @@ class AutomationServer {
       // Determine file type and route to appropriate processor
       const fileType = this.getFileProcessor(file.fileName);
       
+      let result = null;
       if (fileType === 'audio') {
-        return await this.processAudioFile(file, customName, forceReprocess);
+        result = await this.processAudioFile(file, customName, forceReprocess);
       } else if (fileType === 'document') {
-        return await this.processDocumentFile(file, customName, forceReprocess);
+        result = await this.processDocumentFile(file, customName, forceReprocess);
       } else {
         throw new Error(`Unsupported file type: ${file.fileName}`);
       }
+
+      // Increment API call counter
+      this.incrementApiCallCount();
+
+      return result;
 
     } catch (error) {
       logger.error(`Failed to process file ${file.fileName}:`, error);
@@ -492,6 +543,10 @@ class AutomationServer {
       }
       
       throw error;
+    } finally {
+      // Remove from processing queue
+      const fileKey = file.shareableUrl || file.fileName;
+      this.processingQueue.delete(fileKey);
     }
   }
 
@@ -561,14 +616,17 @@ class AutomationServer {
         documentData.shareableUrl = file.shareableUrl;
       }
 
-      // Step 2: Create Notion page in PDF database
-      const notionPage = await this.notionPDFHandler.createOrUpdatePage(documentData, customName, forceReprocess);
-
-      // Step 3: Upload file to Notion if enabled
+      // Step 2: Upload file to Notion if enabled
       let uploadedFile = null;
       if (config.documents.uploadToNotion) {
         uploadedFile = await this.notionPDFHandler.uploadFileToNotion(file.localPath, file.fileName);
+        if (uploadedFile) {
+          documentData.uploadedFile = uploadedFile;
+        }
       }
+
+      // Step 3: Create Notion page in PDF database (with uploaded file reference)
+      const notionPage = await this.notionPDFHandler.createOrUpdatePage(documentData, customName, forceReprocess);
 
       // Step 4: Clean up temporary file
       await this.dropboxHandler.cleanupFile(file.localPath);
@@ -738,6 +796,33 @@ class AutomationServer {
         logger.error(`Error processing URL change for ${result.url}:`, error);
       }
     };
+  }
+
+  // Check API rate limits
+  checkApiLimits() {
+    const now = Date.now();
+    const today = new Date().toDateString();
+
+    if (today !== this.lastResetDate) {
+      this.apiCallCount = 0; // Reset count on new day
+      this.lastResetDate = today;
+      logger.info(`API call count reset for new day. Current count: ${this.apiCallCount}`);
+    }
+
+    if (this.apiCallCount >= this.dailyApiLimit) {
+      logger.warn(`Daily API limit of ${this.dailyApiLimit} calls reached. Processing paused.`);
+      return false;
+    }
+
+    this.apiCallCount++;
+    logger.info(`API call count: ${this.apiCallCount}/${this.dailyApiLimit}`);
+    return true;
+  }
+
+  // Increment API call counter
+  incrementApiCallCount() {
+    this.apiCallCount++;
+    logger.info(`API call count incremented: ${this.apiCallCount}/${this.dailyApiLimit}`);
   }
 }
 

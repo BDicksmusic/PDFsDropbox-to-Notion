@@ -46,7 +46,7 @@ class NotionPDFHandler {
 
   // Build the page data structure for PDF Notion database
   async buildPageData(documentData, customName = null) {
-    const { fileName, generatedTitle, summary, keyPoints, actionItems, topics, sentiment, metadata, shareableUrl } = documentData;
+    const { fileName, generatedTitle, summary, keyPoints, actionItems, topics, sentiment, metadata, shareableUrl, uploadedFile } = documentData;
     const displayName = customName || generatedTitle || fileName.replace(/\.[^/.]+$/, '');
 
     const properties = {
@@ -68,6 +68,11 @@ class NotionPDFHandler {
     // Add URL property with Dropbox shareable link
     if (shareableUrl) {
       properties['URL'] = await this.buildUrlProperty(shareableUrl);
+    }
+
+    // Add Files property with uploaded file if available
+    if (uploadedFile) {
+      properties['Files'] = await this.buildFilesProperty(uploadedFile);
     }
 
     // Add Status property
@@ -131,6 +136,40 @@ class NotionPDFHandler {
           }
         ]
       };
+    }
+  }
+
+  // Build Files property for uploaded file
+  async buildFilesProperty(uploadedFile) {
+    try {
+      const schema = await this.getDatabaseSchema();
+      const filesProperty = schema.Files;
+      
+      if (!filesProperty) {
+        logger.warn('No Files property found in PDF database schema');
+        return null;
+      }
+
+      if (filesProperty.type === 'files') {
+        return {
+          files: [
+            {
+              type: 'file',
+              file: {
+                url: uploadedFile.url || uploadedFile.file?.url,
+                expiry_time: uploadedFile.expiry_time || uploadedFile.file?.expiry_time
+              },
+              name: uploadedFile.name || uploadedFile.file?.name
+            }
+          ]
+        };
+      } else {
+        logger.warn(`Files property type is ${filesProperty.type}, expected 'files'`);
+        return null;
+      }
+    } catch (error) {
+      logger.error('Error building Files property:', error.message);
+      return null;
     }
   }
 
@@ -332,9 +371,32 @@ class NotionPDFHandler {
 
   // Build formatted content blocks for the PDF page
   buildContentBlocks(documentData, customName = null) {
-    const { fileName, summary, keyPoints, actionItems, topics, sentiment, metadata, originalText } = documentData;
+    const { fileName, summary, keyPoints, actionItems, topics, sentiment, metadata, originalText, uploadedFile } = documentData;
     const displayName = customName || fileName.replace(/\.[^/.]+$/, '');
     const blocks = [];
+
+    // Add file block if file was uploaded to Notion
+    if (uploadedFile) {
+      blocks.push({
+        object: 'block',
+        type: 'file',
+        file: {
+          type: 'file',
+          file: {
+            url: uploadedFile.url || uploadedFile.file?.url,
+            expiry_time: uploadedFile.expiry_time || uploadedFile.file?.expiry_time
+          },
+          caption: [
+            {
+              type: 'text',
+              text: {
+                content: `Original file: ${fileName}`
+              }
+            }
+          ]
+        }
+      });
+    }
 
     // Summary section with full text as toggle
     if (summary) {
@@ -552,7 +614,7 @@ class NotionPDFHandler {
     return sentimentMap[normalized] || 'Neutral';
   }
 
-  // Upload file to Notion
+  // Upload file to Notion using the proper Files and Media API
   async uploadFileToNotion(filePath, fileName) {
     try {
       if (!config.documents.uploadToNotion) {
@@ -560,23 +622,43 @@ class NotionPDFHandler {
         return null;
       }
 
+      if (!fs.existsSync(filePath)) {
+        logger.error(`File not found: ${filePath}`);
+        return null;
+      }
+
       logger.info(`Uploading file to Notion: ${fileName}`);
 
+      // Step 1: Create a file upload request to get upload URL
+      const fileStats = fs.statSync(filePath);
+      const createUploadResponse = await axios({
+        method: 'POST',
+        url: `${this.baseURL}/files`,
+        headers: this.getHeaders(),
+        data: {
+          name: fileName,
+          file_size: fileStats.size
+        }
+      });
+
+      const { upload_url, file } = createUploadResponse.data;
+      logger.info(`Created file upload with ID: ${file.id}, size: ${fileStats.size} bytes`);
+
+      // Step 2: Upload the actual file data using multipart/form-data
       const formData = new FormData();
       formData.append('file', fs.createReadStream(filePath), fileName);
 
-      const response = await axios({
+      await axios({
         method: 'POST',
-        url: `${this.baseURL}/files`,
+        url: upload_url,
+        data: formData,
         headers: {
-          ...this.getHeaders(),
           ...formData.getHeaders()
-        },
-        data: formData
+        }
       });
 
-      logger.info(`Successfully uploaded file to Notion: ${response.data.id}`);
-      return response.data;
+      logger.info(`Successfully uploaded file to Notion: ${file.id}`);
+      return file;
     } catch (error) {
       logger.error(`Failed to upload file to Notion:`, error.response?.data || error.message);
       return null;
