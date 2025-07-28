@@ -23,6 +23,7 @@
   "license": "MIT",
   "dependencies": {
     "axios": "^1.6.0",
+    "canvas": "^3.1.2",
     "crypto": "^1.0.1",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
@@ -30,6 +31,7 @@
     "mammoth": "^1.9.1",
     "multer": "^1.4.5-lts.1",
     "openai": "^4.20.1",
+    "pdf-lib": "^1.17.1",
     "pdf-parse": "^1.1.1",
     "pdf-to-png-converter": "^3.7.1",
     "pdf2pic": "^3.2.0",
