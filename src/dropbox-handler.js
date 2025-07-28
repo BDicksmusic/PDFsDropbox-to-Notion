@@ -9,9 +9,6 @@ const { logger, ensureTempDir, cleanupTempFile, isValidAudioFormat, isValidFileS
 class DropboxHandler {
   constructor() {
     this.accessToken = config.dropbox.accessToken;
-    this.refreshToken = config.dropbox.refreshToken;
-    this.appKey = config.dropbox.appKey;
-    this.appSecret = config.dropbox.appSecret;
     this.audioFolderPath = config.dropbox.folderPath;
     this.pdfFolderPath = config.dropbox.pdfFolderPath;
     this.webhookSecret = config.dropbox.webhookSecret;
