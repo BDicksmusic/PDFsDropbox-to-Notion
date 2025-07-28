@@ -80,7 +80,7 @@ class NotionPDFHandler {
     }
 
     // Add Status property
-    properties['Status'] = await this.buildStatusProperty('📄');
+    properties['Status'] = await this.buildStatusProperty('📥');
 
     // Add document type as relation
     properties['Document Type'] = await this.buildDocumentTypeRelation(metadata?.fileType);
