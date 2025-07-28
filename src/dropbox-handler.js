@@ -341,6 +341,7 @@ class DropboxHandler {
   // Get shareable URL for a file
   async getShareableUrl(filePath) {
     try {
+      // First, try to create a new shared link
       const response = await this.makeAuthenticatedRequest({
         method: 'POST',
         url: 'https://api.dropboxapi.com/2/sharing/create_shared_link_with_settings',
@@ -359,8 +360,37 @@ class DropboxHandler {
 
       return response.data.url;
     } catch (error) {
-      logger.error(`Failed to get shareable URL for ${filePath}:`, error.response?.data || error.message);
-      throw error;
+      // If the link already exists, get the existing link
+      if (error.response?.data?.error?.error_summary === 'shared_link_already_exists/') {
+        logger.info(`Shared link already exists for ${filePath}, getting existing link`);
+        
+        try {
+          const existingLinkResponse = await this.makeAuthenticatedRequest({
+            method: 'POST',
+            url: 'https://api.dropboxapi.com/2/sharing/list_shared_links',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            data: {
+              path: filePath,
+              direct_only: false
+            }
+          });
+
+          if (existingLinkResponse.data.links && existingLinkResponse.data.links.length > 0) {
+            return existingLinkResponse.data.links[0].url;
+          } else {
+            throw new Error('No existing shared link found');
+          }
+        } catch (existingLinkError) {
+          logger.error(`Failed to get existing shared link for ${filePath}:`, existingLinkError.response?.data || existingLinkError.message);
+          throw existingLinkError;
+        }
+      } else {
+        logger.warn(`Failed to get shareable URL for ${filePath}:`, error.response?.data || error.message);
+        // Don't throw error for shareable URL issues, just return null
+        return null;
+      }
     }
   }
 

@@ -49,17 +49,8 @@ class NotionHandler {
     const displayName = customName || generatedTitle || fileName.replace(/\.[^/.]+$/, ''); // Remove file extension
 
     const properties = {
-      // Name property (matches your database)
-      'Name': {
-        title: [
-          {
-            type: 'text',
-            text: {
-              content: generatedTitle
-            }
-          }
-        ]
-      },
+      // Name property (matches your database) - using link tags relation
+      'Name': await this.buildLinkTagsRelation(generatedTitle),
       'Manual Name Input': {
         rich_text: [
           {
@@ -207,6 +198,80 @@ class NotionHandler {
             type: 'text',
             text: {
               content: statusValue
+            }
+          }
+        ]
+      };
+    }
+  }
+
+  // Build link tags relation for the Name property
+  async buildLinkTagsRelation(title) {
+    try {
+      const schema = await this.getDatabaseSchema();
+      const nameProperty = schema['Name'];
+      
+      if (!nameProperty) {
+        logger.warn('No Name property found in database schema, defaulting to title');
+        return {
+          title: [
+            {
+              type: 'text',
+              text: {
+                content: title
+              }
+            }
+          ]
+        };
+      }
+
+      if (nameProperty.type === 'relation') {
+        // For relation fields, we need to provide relation database ID and page ID
+        // You can configure these IDs in your environment variables
+        const relationId = process.env.NOTION_LINK_TAGS_RELATION_ID;
+        
+        if (relationId) {
+          return {
+            relation: [
+              {
+                id: relationId
+              }
+            ]
+          };
+        } else {
+          logger.warn('Link tags relation ID not configured, using title fallback');
+          return {
+            title: [
+              {
+                type: 'text',
+                text: {
+                  content: title
+                }
+              }
+            ]
+          };
+        }
+      } else {
+        // Fallback to title if the property is not a relation
+        return {
+          title: [
+            {
+              type: 'text',
+              text: {
+                content: title
+              }
+            }
+          ]
+        };
+      }
+    } catch (error) {
+      logger.warn(`Error building link tags relation, defaulting to title:`, error.message);
+      return {
+        title: [
+          {
+            type: 'text',
+            text: {
+              content: title
             }
           }
         ]
