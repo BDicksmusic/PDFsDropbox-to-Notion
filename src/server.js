@@ -689,7 +689,8 @@ class AutomationServer {
       // Process the file
       const file = {
         originalPath: filePath,
-        fileName: customName || metadata.name, // Use customName if provided, otherwise original name
+        fileName: metadata.name, // Always use original filename for file type detection
+        displayName: customName || metadata.name, // Use customName for display purposes only
         localPath: null,
         size: metadata.size,
         modified: metadata.server_modified,
@@ -701,16 +702,16 @@ class AutomationServer {
         let alreadyProcessed = false;
         
         if (shareableUrl) {
-          alreadyProcessed = await this.isFileAlreadyProcessedByUrl(shareableUrl, file.fileName);
+          alreadyProcessed = await this.isFileAlreadyProcessedByUrl(shareableUrl, file.displayName);
           logger.info(`Manual processing URL-based check: ${alreadyProcessed ? 'already processed' : 'new file'}`);
         } else {
           logger.warn(`No shareable URL for manual processing, falling back to filename check`);
-          alreadyProcessed = await this.isFileAlreadyProcessedByFilename(file.fileName);
+          alreadyProcessed = await this.isFileAlreadyProcessedByFilename(file.displayName);
           logger.info(`Manual processing filename-based check: ${alreadyProcessed ? 'already processed' : 'new file'}`);
         }
         
         if (alreadyProcessed) {
-          throw new Error(`File ${file.fileName} has already been processed. Use force-reprocess-file endpoint to reprocess.`);
+          throw new Error(`File ${file.displayName} has already been processed. Use force-reprocess-file endpoint to reprocess.`);
         }
       }
 
@@ -718,7 +719,7 @@ class AutomationServer {
       file.localPath = await this.dropboxHandler.downloadFile(filePath, file.fileName);
       
       // Process through pipeline
-      return await this.processFile(file, customName, forceReprocess);
+      return await this.processFile(file, file.displayName !== file.fileName ? file.displayName : null, forceReprocess);
       
     } catch (error) {
       logger.error(`Manual file processing failed for ${filePath}:`, error);

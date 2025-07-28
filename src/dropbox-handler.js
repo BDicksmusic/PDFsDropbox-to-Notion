@@ -455,20 +455,17 @@ class DropboxHandler {
       const apiArg = JSON.stringify({ path: dropboxPath });
       logger.info(`Dropbox API request - URL: https://content.dropboxapi.com/2/files/download, Path: ${dropboxPath}, API-Arg: ${apiArg}`);
 
-      // Use direct axios call for download to avoid Content-Type header issues
+      // Use direct axios call for download with proper headers
       const response = await axios({
         method: 'POST',
         url: 'https://content.dropboxapi.com/2/files/download',
         headers: {
           'Authorization': `Bearer ${this.accessToken}`,
-          'Dropbox-API-Arg': apiArg
+          'Dropbox-API-Arg': apiArg,
+          'Content-Type': 'text/plain'  // Dropbox requires this specific Content-Type
         },
+        data: '',  // Send empty body as required by Dropbox API
         responseType: 'stream',
-        transformRequest: [(data, headers) => {
-          // Remove any Content-Type header that axios might add
-          delete headers['Content-Type'];
-          return data;
-        }],
         validateStatus: () => true
       });
 
