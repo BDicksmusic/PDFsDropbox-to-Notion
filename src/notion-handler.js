@@ -220,7 +220,7 @@ class NotionHandler {
     const displayName = customName || fileName.replace(/\.[^/.]+$/, ''); // Remove file extension
     const blocks = [];
 
-    // Summary section
+    // Summary section with full transcript as toggle
     if (summary) {
       blocks.push({
         object: 'block',
@@ -233,6 +233,18 @@ class NotionHandler {
       // Add chunked summary blocks to stay under 2000 character limit
       const summaryBlocks = this.createChunkedTextBlocks(summary);
       blocks.push(...summaryBlocks);
+
+      // Add full transcript as toggle under summary
+      if (originalText) {
+        blocks.push({
+          object: 'block',
+          type: 'toggle',
+          toggle: {
+            rich_text: [{ type: 'text', text: { content: '📄 Full Transcript' } }],
+            children: this.createChunkedTextBlocks(originalText)
+          }
+        });
+      }
     }
 
     // Key Points section
@@ -321,26 +333,13 @@ class NotionHandler {
             { type: 'text', text: { content: '\n' } },
             { type: 'text', text: { content: `😊 Sentiment: ${this.normalizeSentiment(sentiment)}` } },
             { type: 'text', text: { content: '\n' } },
+            { type: 'text', text: { content: `💰 Total Cost: $${(metadata?.totalCost || 0).toFixed(4)}` } },
+            { type: 'text', text: { content: '\n' } },
             { type: 'text', text: { content: `📅 Processed: ${new Date(metadata?.processedAt || Date.now()).toLocaleString()}` } }
           ]
         }
       }
     );
-
-    // Full Transcript section
-    if (originalText) {
-      blocks.push({
-        object: 'block',
-        type: 'heading_2',
-        heading_2: {
-          rich_text: [{ type: 'text', text: { content: 'Full Transcript' } }]
-        }
-      });
-      
-      // Add chunked transcript blocks to stay under 2000 character limit
-      const transcriptBlocks = this.createChunkedTextBlocks(originalText);
-      blocks.push(...transcriptBlocks);
-    }
 
     return blocks;
   }

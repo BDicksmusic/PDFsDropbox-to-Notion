@@ -40,6 +40,10 @@ class TranscriptionHandler {
       logger.info(`Actual duration: ${formatDuration(transcription.duration)}`);
       logger.info(`Word count: ${transcription.text.split(' ').length}`);
 
+      // Calculate actual cost for transcription
+      const actualTranscriptionCost = estimateCost(transcription.duration / 60, 0, 'whisper-1');
+      logger.info(`Transcription cost: $${actualTranscriptionCost.toFixed(4)}`);
+
       // Auto-format the transcription if enabled
       let formattedText = transcription.text;
       if (config.transcription.autoFormat) {
@@ -52,7 +56,8 @@ class TranscriptionHandler {
         duration: transcription.duration,
         language: transcription.language,
         segments: transcription.segments || [],
-        wordCount: transcription.text.split(' ').length
+        wordCount: transcription.text.split(' ').length,
+        cost: actualTranscriptionCost
       };
 
     } catch (error) {
@@ -216,7 +221,8 @@ class TranscriptionHandler {
 
       logger.info(`Key points extraction completed`);
       logger.info(`Actual tokens used: ${completion.usage.total_tokens}`);
-      logger.info(`Actual cost: $${estimateCost(completion.usage.prompt_tokens, completion.usage.completion_tokens, 'gpt-3.5-turbo').toFixed(4)}`);
+      const actualCost = estimateCost(completion.usage.prompt_tokens, completion.usage.completion_tokens, 'gpt-3.5-turbo');
+      logger.info(`Actual cost: $${actualCost.toFixed(4)}`);
 
       return {
         summary: keyPoints.summary,
@@ -225,7 +231,8 @@ class TranscriptionHandler {
         topics: keyPoints.topics,
         sentiment: keyPoints.sentiment,
         wordCount: transcript.wordCount,
-        duration: transcript.duration
+        duration: transcript.duration,
+        totalCost: actualCost
       };
 
     } catch (error) {
@@ -327,6 +334,9 @@ Format your response as valid JSON with these fields:
       // Step 3: Generate descriptive title
       const generatedTitle = await this.generateTitle(transcription.text, fileName);
 
+      // Calculate total cost
+      const totalCost = transcription.cost + keyPoints.totalCost;
+
       // Combine results
       const result = {
         fileName: fileName,
@@ -341,7 +351,8 @@ Format your response as valid JSON with these fields:
           duration: transcription.duration,
           wordCount: transcription.wordCount,
           language: transcription.language,
-          processedAt: new Date().toISOString()
+          processedAt: new Date().toISOString(),
+          totalCost: totalCost
         }
       };
 
