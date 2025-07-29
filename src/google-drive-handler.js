@@ -243,6 +243,7 @@ class GoogleDriveHandler {
     try {
       logger.info('Verifying webhook signature...');
       logger.info('Body length:', body.length);
+      logger.info('Body content:', body.substring(0, 100) + '...');
       logger.info('Signature received:', signature ? signature.substring(0, 10) + '...' : 'none');
       
       const expectedSignature = crypto
