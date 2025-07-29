@@ -241,11 +241,18 @@ class GoogleDriveHandler {
     }
 
     try {
+      logger.info('Verifying webhook signature...');
+      logger.info('Body length:', body.length);
+      logger.info('Signature received:', signature ? signature.substring(0, 10) + '...' : 'none');
+      
       const expectedSignature = crypto
         .createHmac('sha256', this.webhookSecret)
         .update(body)
         .digest('hex');
-
+      
+      logger.info('Expected signature:', expectedSignature.substring(0, 10) + '...');
+      logger.info('Signatures match:', signature === expectedSignature);
+      
       return signature === expectedSignature;
     } catch (error) {
       logger.error('Error verifying Google Drive webhook signature:', error);

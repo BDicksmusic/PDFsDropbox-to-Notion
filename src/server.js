@@ -191,9 +191,11 @@ class AutomationServer {
                          req.headers['X-Webhook-Secret'] ||
                          req.headers['X-Goog-Signature'];
         logger.info('Signature header found:', signature ? 'yes' : 'no');
+        logger.info('Webhook secret configured:', this.googleDriveHandler.webhookSecret ? 'yes' : 'no');
         
         if (!this.googleDriveHandler.verifyWebhookSignature(JSON.stringify(req.body), signature)) {
           logger.warn('Invalid webhook signature from Google Drive');
+          logger.warn('Expected signature based on body and secret');
           return res.status(401).json({ error: 'Invalid signature' });
         }
 
