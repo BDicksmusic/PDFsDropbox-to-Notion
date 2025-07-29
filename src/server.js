@@ -481,17 +481,26 @@ class AutomationServer {
   start() {
     const port = config.server.port;
     
-    this.app.listen(port, () => {
-      logger.info(`Server started on port ${port}`);
-      logger.info(`Health check: http://localhost:${port}/health`);
-      logger.info(`Dropbox webhook URL: http://localhost:${port}/webhook/dropbox`);
-      logger.info(`Google Drive webhook URL: http://localhost:${port}/webhook/google-drive`);
-      
-      // Start periodic scan if enabled
-      if (this.periodicScanEnabled) {
-        this.startPeriodicScan();
-      }
-    });
+    try {
+      this.app.listen(port, () => {
+        logger.info(`Server started on port ${port}`);
+        logger.info(`Health check: http://localhost:${port}/health`);
+        logger.info(`Dropbox webhook URL: http://localhost:${port}/webhook/dropbox`);
+        if (this.googleDriveHandler) {
+          logger.info(`Google Drive webhook URL: http://localhost:${port}/webhook/google-drive`);
+        } else {
+          logger.info('Google Drive webhook not available (handler not initialized)');
+        }
+        
+        // Start periodic scan if enabled
+        if (this.periodicScanEnabled) {
+          this.startPeriodicScan();
+        }
+      });
+    } catch (error) {
+      logger.error('Failed to start server:', error);
+      process.exit(1);
+    }
   }
 
   // Start periodic scan
