@@ -1,10 +1,16 @@
 // Google Apps Script for Automation Connections Webhook
 // This script monitors a Google Drive folder and sends webhook notifications
 
-// Configuration - Update these values
-const WEBHOOK_URL = 'https://your-railway-app.railway.app/webhook/google-drive'; // Replace with your Railway URL
-const FOLDER_ID = '1Wb4U-PM1BgeYtzp6I_bFwVMoS9O88Irm'; // Your audio folder ID
-const WEBHOOK_SECRET = '0a31de66ee1081f2f298ff68694547738cc8cf0bd37c4dac07937f79f3b34366'; // Your webhook secret
+// Configuration - Update these values with your actual settings
+const WEBHOOK_URL = 'https://your-railway-app.railway.app/webhook/google-drive'; // Replace with your actual Railway URL
+const FOLDER_ID = '1Wb4U-PM1BgeYtzp6I_bFwVMoS9O88Irm'; // Replace with your actual Google Drive folder ID
+const WEBHOOK_SECRET = '0a31de66ee1081f2f298ff68694547738cc8cf0bd37c4dac07937f79f3b34366'; // Replace with your actual webhook secret
+
+// Instructions:
+// 1. Replace WEBHOOK_URL with your Railway app URL (e.g., https://my-app.railway.app/webhook/google-drive)
+// 2. Replace FOLDER_ID with your Google Drive folder ID (get from URL when you open the folder)
+// 3. Replace WEBHOOK_SECRET with the same secret you set in your Railway environment variables
+// 4. Deploy this script and run the initialize() function once
 
 // Store the last check time in PropertiesService
 const PROPERTIES_KEY = 'lastCheckTime';
