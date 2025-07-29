@@ -1,6 +1,6 @@
-# Setup Guide for Dropbox to Notion Voice Automation
+# Setup Guide for PDF to Notion Automation
 
-This guide will walk you through setting up the complete automation system step by step.
+This guide will walk you through setting up the complete PDF and image processing automation system step by step.
 
 ## Prerequisites
 
@@ -30,7 +30,7 @@ This guide will walk you through setting up the complete automation system step 
 2. Click "Create app"
 3. Choose "Scoped access"
 4. Choose "Full Dropbox" access
-5. Name your app (e.g., "Voice Automation")
+5. Name your app (e.g., "PDF Automation")
 6. Note down your **App Key** and **App Secret**
 
 ### 2.2 Generate Access Token
@@ -51,10 +51,10 @@ This guide will walk you through setting up the complete automation system step 
 3. Set the URL to: `https://your-railway-app.railway.app/webhook/dropbox`
 4. Copy the **Webhook secret**
 
-### 2.4 Create Easy Voice Recorder Folder
+### 2.4 Create PDF Folder
 
-1. In your Dropbox, create a folder called "Easy Voice Recorder"
-2. Note the path (e.g., `/Apps/Easy Voice Recorder`)
+1. In your Dropbox, create a folder called "PDFs" (or use existing)
+2. Note the path (e.g., `/Apps/PDFs`)
 
 ## Step 3: Notion Configuration
 
@@ -62,7 +62,7 @@ This guide will walk you through setting up the complete automation system step 
 
 1. Go to [Notion Integrations](https://www.notion.so/my-integrations)
 2. Click "New integration"
-3. Name it (e.g., "Voice Automation")
+3. Name it (e.g., "PDF Automation")
 4. Select your workspace
 5. Copy the **Internal Integration Token**
 
@@ -74,17 +74,10 @@ This guide will walk you through setting up the complete automation system step 
 
 | Property Name | Type | Description |
 |---------------|------|-------------|
-| Title | Title | Auto-filled with filename |
-| Summary | Text | AI-generated summary |
-| Key Points | Text | Main points from recording |
-| Action Items | Text | Tasks and follow-ups |
-| Topics | Multi-select | Categories/themes |
-| Sentiment | Select | Positive/Negative/Neutral/Mixed |
-| Duration | Number | Audio duration in seconds |
-| Word Count | Number | Number of words transcribed |
-| Language | Select | Detected language |
-| Processed Date | Date | When processed |
-| File Name | Text | Original filename |
+| Name | Title | Auto-filled with filename |
+| Main Entry | Text | AI-generated summary |
+| URL | URL | Dropbox shareable link |
+| Files & media | Files | Uploaded document |
 | Status | Select | Processing status |
 
 4. Share the database with your integration
@@ -104,7 +97,7 @@ Update your `.env` file with all the values:
 # Dropbox Configuration
 DROPBOX_ACCESS_TOKEN=your_dropbox_access_token_here
 DROPBOX_WEBHOOK_SECRET=your_webhook_secret_here
-DROPBOX_FOLDER_PATH=/Apps/Easy Voice Recorder
+DROPBOX_PDF_FOLDER_PATH=/Apps/PDFs
 
 # Notion Configuration
 NOTION_API_KEY=your_notion_integration_token_here
@@ -119,7 +112,7 @@ RAILWAY_URL=https://your-app-name.railway.app
 
 # Processing Configuration
 MAX_FILE_SIZE_MB=50
-SUPPORTED_AUDIO_FORMATS=mp3,wav,m4a,flac
+SUPPORTED_DOCUMENT_FORMATS=pdf,jpg,jpeg,png,bmp,tiff,tif,webp,docx,doc
 TEMPORARY_FOLDER=./temp
 
 # Logging
@@ -178,17 +171,11 @@ LOG_LEVEL=info
 
 Visit: `https://your-app-name.railway.app/health`
 
-Should return: `{"status":"healthy","timestamp":"...","version":"1.0.0"}`
+Should return: `{"status":"healthy","timestamp":"...","service":"PDF-Automation"}`
 
-### 7.2 Test System Status
+### 7.2 Test with PDF File
 
-Visit: `https://your-app-name.railway.app/status`
-
-Should show all services as "connected"
-
-### 7.3 Test with Audio File
-
-1. Upload an audio file to your Dropbox "Easy Voice Recorder" folder
+1. Upload a PDF file to your Dropbox "PDFs" folder
 2. Check the logs in Railway dashboard
 3. Verify a new page appears in your Notion database
 
@@ -196,12 +183,12 @@ Should show all services as "connected"
 
 ### 8.1 OpenAI Costs
 
-- **Whisper**: $0.006 per minute
+- **GPT-4 Vision**: ~$0.01-0.03 per image/PDF page
 - **GPT-3.5-turbo**: ~$0.002 per 1K tokens
 
 **Estimated monthly costs:**
-- 10 hours of audio: ~$3.60 (Whisper) + ~$2.00 (GPT) = ~$5.60
-- 50 hours of audio: ~$18.00 (Whisper) + ~$10.00 (GPT) = ~$28.00
+- 100 PDF pages: ~$1.00-3.00 (Vision) + ~$2.00 (GPT) = ~$3.00-5.00
+- 500 PDF pages: ~$5.00-15.00 (Vision) + ~$10.00 (GPT) = ~$15.00-25.00
 
 ### 8.2 Railway Costs
 
@@ -210,8 +197,8 @@ Should show all services as "connected"
 
 ### 8.3 Cost Reduction Tips
 
-1. **Compress audio files** before uploading
-2. **Use shorter recordings** when possible
+1. **Compress PDF files** before uploading
+2. **Use smaller images** when possible
 3. **Batch process** multiple files
 4. **Monitor usage** in OpenAI dashboard
 
@@ -224,9 +211,9 @@ Should show all services as "connected"
    - Verify webhook URL is correct
    - Ensure Dropbox app has correct permissions
 
-2. **Transcription failing:**
+2. **PDF processing failing:**
    - Check OpenAI API key
-   - Verify audio file format is supported
+   - Verify PDF file format is supported
    - Check file size limits
 
 3. **Notion page not created:**
@@ -236,7 +223,7 @@ Should show all services as "connected"
 
 4. **High costs:**
    - Monitor OpenAI usage dashboard
-   - Consider compressing audio files
+   - Consider compressing PDF files
    - Set up usage alerts
 
 ### Debug Commands
@@ -258,7 +245,7 @@ If you encounter issues:
 
 1. Check the Railway logs first
 2. Verify all environment variables are set correctly
-3. Test each service individually using the `/status` endpoint
+3. Test each service individually using the `/health` endpoint
 4. Check the troubleshooting section above
 
 ## Next Steps
@@ -267,9 +254,8 @@ Once everything is working:
 
 1. **Monitor usage** and costs
 2. **Customize the Notion database** structure
-3. **Add more audio formats** if needed
+3. **Add more document formats** if needed
 4. **Implement additional features** like:
    - Email notifications
    - Slack integration
-   - Custom transcription prompts
-   - Batch processing 
+   - Custom processing prompts 

@@ -221,6 +221,28 @@ class DropboxHandler {
 
       return response.data.url;
     } catch (error) {
+      // If link already exists, get the existing link
+      if (error.response?.status === 409 && error.response?.data?.error?.['.tag'] === 'shared_link_already_exists') {
+        logger.info(`Shareable link already exists for ${dropboxPath}, getting existing link`);
+        
+        try {
+          const existingLinkResponse = await this.makeAuthenticatedRequest({
+            method: 'POST',
+            url: 'https://api.dropboxapi.com/2/sharing/list_shared_links',
+            data: {
+              path: dropboxPath,
+              direct_only: false
+            }
+          });
+
+          if (existingLinkResponse.data.links && existingLinkResponse.data.links.length > 0) {
+            return existingLinkResponse.data.links[0].url;
+          }
+        } catch (getLinkError) {
+          logger.error(`Failed to get existing shareable link for ${dropboxPath}:`, getLinkError.response?.data || getLinkError.message);
+        }
+      }
+      
       logger.error(`Failed to create shareable link for ${dropboxPath}:`, error.response?.data || error.message);
       throw error;
     }

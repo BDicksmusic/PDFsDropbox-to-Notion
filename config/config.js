@@ -3,18 +3,16 @@ require('dotenv').config();
 const config = {
   dropbox: {
     accessToken: process.env.DROPBOX_ACCESS_TOKEN,
-    refreshToken: process.env.DROPBOX_REFRESH_TOKEN, // For automatic token refresh
-    appKey: process.env.DROPBOX_APP_KEY, // Required for token refresh
-    appSecret: process.env.DROPBOX_APP_SECRET, // Required for token refresh
+    refreshToken: process.env.DROPBOX_REFRESH_TOKEN,
+    appKey: process.env.DROPBOX_APP_KEY,
+    appSecret: process.env.DROPBOX_APP_SECRET,
     webhookSecret: process.env.DROPBOX_WEBHOOK_SECRET,
-    folderPath: process.env.DROPBOX_FOLDER_PATH || '/Recordings',
     pdfFolderPath: process.env.DROPBOX_PDF_FOLDER_PATH || '/Apps/PDFs'
   },
   
   notion: {
     apiKey: process.env.NOTION_API_KEY,
-    databaseId: process.env.NOTION_DATABASE_ID,
-    pdfDatabaseId: process.env.NOTION_PDF_DATABASE_ID
+    databaseId: process.env.NOTION_DATABASE_ID
   },
   
   openai: {
@@ -33,23 +31,16 @@ const config = {
   },
 
   documents: {
-    // OCR settings
-    ocrLanguage: process.env.OCR_LANGUAGE || 'eng',
-    ocrConfidence: parseFloat(process.env.OCR_CONFIDENCE_THRESHOLD) || 60,
-    
-    // Image preprocessing
-    imagePreprocessing: process.env.ENABLE_IMAGE_PREPROCESSING === 'true' || true,
+    // Vision model settings for GPT-4 Vision
+    visionModel: process.env.VISION_MODEL || 'gpt-4-vision-preview',
+    visionMaxTokens: parseInt(process.env.VISION_MAX_TOKENS) || 4096,
+    visionTemperature: parseFloat(process.env.VISION_TEMPERATURE) || 0.3,
+    imageDetail: process.env.IMAGE_DETAIL || 'high',
     
     // Document analysis settings
     documentAnalysisModel: process.env.DOCUMENT_ANALYSIS_MODEL || 'gpt-3.5-turbo',
     documentMaxTokens: parseInt(process.env.DOCUMENT_MAX_TOKENS) || 1000,
     documentTemperature: parseFloat(process.env.DOCUMENT_TEMPERATURE) || 0.3,
-    
-    // Vision model settings for GPT-4 Vision
-    visionModel: process.env.VISION_MODEL || 'gpt-4-vision-preview',
-    visionMaxTokens: parseInt(process.env.VISION_MAX_TOKENS) || 4096,
-    visionTemperature: parseFloat(process.env.VISION_TEMPERATURE) || 0.3,
-    imageDetail: process.env.IMAGE_DETAIL || 'high', // 'low', 'high', or 'auto'
     
     // Custom prompts
     extractionPrompt: process.env.EXTRACTION_PROMPT || null,
@@ -64,20 +55,8 @@ const config = {
 
   // API rate limiting
   apiLimits: {
-    dailyApiLimit: parseInt(process.env.DAILY_API_LIMIT) || 1000,
-    periodicScanEnabled: process.env.PERIODIC_SCAN_ENABLED === 'true' || false,
-    periodicScanIntervalMinutes: parseInt(process.env.PERIODIC_SCAN_INTERVAL_MINUTES) || 30
+    dailyApiLimit: parseInt(process.env.DAILY_API_LIMIT) || 1000
   }
-};
-
-// Add alias for backward compatibility with document-processor.js
-config.documentProcessing = {
-  visionModel: config.documents.visionModel,
-  maxTokens: config.documents.visionMaxTokens,
-  temperature: config.documents.visionTemperature,
-  imageQuality: config.documents.imageDetail,
-  extractionPrompt: config.documents.extractionPrompt,
-  analysisModel: config.documents.documentAnalysisModel
 };
 
 // Validation

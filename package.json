@@ -1,25 +1,22 @@
 {
-  "name": "automation-connections",
+  "name": "pdf-dropbox-to-notion",
   "version": "1.0.0",
-  "description": "Automation-Connections - Voice recording processing from Dropbox to Notion",
+  "description": "PDF and Image processing from Dropbox to Notion with AI analysis",
   "main": "src/server.js",
   "scripts": {
     "start": "node start.js",
     "dev": "nodemon src/server.js",
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "setup-webhook": "node google-drive-webhook-setup.js",
-    "renew-webhook": "node renew-webhook.js"
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
     "dropbox",
     "notion",
     "automation",
-    "voice",
-    "transcription",
-    "ai",
     "pdf",
     "ocr",
-    "image-processing"
+    "image-processing",
+    "ai",
+    "document-processing"
   ],
   "author": "Your Name",
   "license": "MIT",
@@ -39,8 +36,7 @@
     "pdf2pic": "^3.2.0",
     "sharp": "^0.33.5",
     "tesseract.js": "^5.1.1",
-    "winston": "^3.11.0",
-    "googleapis": "^128.0.0"
+    "winston": "^3.11.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
