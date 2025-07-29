@@ -203,6 +203,35 @@ class DropboxHandler {
     }
   }
 
+  // Get file metadata from Dropbox
+  async getFileMetadata(dropboxPath) {
+    try {
+      logger.info(`Getting metadata for file: ${dropboxPath}`);
+      
+      const response = await this.makeAuthenticatedRequest({
+        method: 'POST',
+        url: 'https://api.dropboxapi.com/2/files/get_metadata',
+        data: {
+          path: dropboxPath
+        }
+      });
+
+      const metadata = response.data;
+      logger.info(`Retrieved metadata for ${metadata.name}: size=${metadata.size}, modified=${metadata.server_modified}`);
+      
+      return {
+        name: metadata.name,
+        size: metadata.size,
+        server_modified: metadata.server_modified,
+        path_display: metadata.path_display,
+        id: metadata.id
+      };
+    } catch (error) {
+      logger.error(`Failed to get metadata for ${dropboxPath}:`, error.response?.data || error.message);
+      throw error;
+    }
+  }
+
   // Create shareable link for a file
   async createShareableLink(dropboxPath) {
     try {

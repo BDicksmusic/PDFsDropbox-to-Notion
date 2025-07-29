@@ -1,6 +1,7 @@
 const OpenAI = require('openai');
 const fs = require('fs').promises;
 const path = require('path');
+const pdfParse = require('pdf-parse');
 const config = require('../config/config');
 const { logger, estimateCost } = require('./utils');
 
@@ -59,20 +60,20 @@ class DocumentProcessor {
     }
   }
 
-  // Process PDF files by converting to images first
+  // Process PDF files using pdf-parse
   async processPDF(filePath) {
     try {
-      logger.info('Processing PDF - converting to image for vision model');
+      logger.info('Processing PDF with pdf-parse library');
       
-      // For now, we'll use a simple text extraction approach
-      // In production, you'd want to use pdf-parse or similar library
       const fileBuffer = await fs.readFile(filePath);
       
-      // Use a simple text extraction approach since vision model doesn't support PDFs directly
-      // This is a fallback - ideally use pdf-parse for better text extraction
-      const extractedText = `PDF Document: ${path.basename(filePath)}\n\nThis is a placeholder for PDF text extraction. In a production environment, you would use a library like pdf-parse to extract text from PDF files.`;
+      // Use pdf-parse to extract text from PDF
+      const pdfData = await pdfParse(fileBuffer);
+      const extractedText = pdfData.text;
       
-      const cost = 0.001; // Minimal cost for placeholder processing
+      logger.info(`PDF text extraction completed. Pages: ${pdfData.numpages}, Text length: ${extractedText.length} characters`);
+
+      const cost = 0.001; // Minimal cost for pdf-parse processing
 
       return {
         text: extractedText,
@@ -81,7 +82,8 @@ class DocumentProcessor {
           fileName: path.basename(filePath),
           fileSize: fileBuffer.length,
           processedAt: new Date().toISOString(),
-          note: 'PDF text extraction placeholder - implement pdf-parse for full functionality'
+          numPages: pdfData.numpages,
+          info: pdfData.info || {}
         },
         cost: cost
       };
