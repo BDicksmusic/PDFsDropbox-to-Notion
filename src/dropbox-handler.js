@@ -121,72 +121,73 @@ class DropboxHandler {
       // When we receive a webhook, we need to check both folders for new files
       logger.info('Checking folders for files after webhook notification');
       
-             const files = await this.listFiles();
+      const files = await this.listFiles();
        
-       // Debug: Show all files before filtering
-       const allFiles = files.filter(entry => entry['.tag'] === 'file');
-       logger.info(`📁 All files found before filtering:`);
-       allFiles.forEach((file, index) => {
-         logger.info(`  ${index + 1}. ${file.name} (path: ${file.path_lower})`);
-       });
+      // Debug: Show all entries (both files and folders) before filtering
+      const allEntries = files;
+      logger.info(`📁 All entries found before filtering:`);
+      allEntries.forEach((entry, index) => {
+        const type = entry['.tag'] === 'file' ? 'FILE' : 'FOLDER';
+        logger.info(`  ${index + 1}. ${entry.name} (${type}) (path: ${entry.path_lower})`);
+      });
        
-                             // Get all files and filter by extension instead of folder path
-        const audioExtensions = ['mp3', 'wav', 'm4a', 'flac', 'aac', 'ogg'];
-        const documentExtensions = ['pdf', 'jpg', 'jpeg', 'png', 'bmp', 'tiff', 'tif', 'webp', 'docx', 'doc'];
-        
-        const audioFiles = files.filter(entry => {
-          const isFile = entry['.tag'] === 'file';
-          if (!isFile) return false;
-          
-          const extension = entry.name.toLowerCase().split('.').pop();
-          const isAudioFile = audioExtensions.includes(extension);
-          
-          // Debug logging for audio files
-          logger.info(`🔍 Audio extension check: "${entry.name}" (${extension}) = ${isAudioFile}`);
-          if (!isAudioFile) {
-            logger.debug(`❌ Not audio file: ${entry.path_lower} (extension: ${extension})`);
-          } else {
-            logger.info(`✅ Audio file found: ${entry.name} (${extension})`);
-          }
-          
-          return isAudioFile;
-        });
-
-        const pdfFiles = files.filter(entry => {
-          const isFile = entry['.tag'] === 'file';
-          if (!isFile) return false;
-          
-          const extension = entry.name.toLowerCase().split('.').pop();
-          const isDocumentFile = documentExtensions.includes(extension);
-          
-          // Debug logging for document files
-          logger.info(`🔍 Document extension check: "${entry.name}" (${extension}) = ${isDocumentFile}`);
-          if (!isDocumentFile) {
-            logger.debug(`❌ Not document file: ${entry.path_lower} (extension: ${extension})`);
-          } else {
-            logger.info(`✅ Document file found: ${entry.name} (${extension})`);
-          }
-          
-          return isDocumentFile;
-        });
-
-             logger.info(`Found ${audioFiles.length} audio files, ${pdfFiles.length} document files (filtered by extension)`);
-       
-       // Debug: Log the extensions we're looking for
-       logger.info(`Audio extensions: ${audioExtensions.join(', ')}`);
-       logger.info(`Document extensions: ${documentExtensions.join(', ')}`);
+      // Get all files and filter by extension instead of folder path
+      const audioExtensions = ['mp3', 'wav', 'm4a', 'flac', 'aac', 'ogg'];
+      const documentExtensions = ['pdf', 'jpg', 'jpeg', 'png', 'bmp', 'tiff', 'tif', 'webp', 'docx', 'doc'];
       
-             // Debug: Log all file paths to see what we're getting
-       const allFilePaths = files.filter(entry => entry['.tag'] === 'file').map(entry => entry.path_lower);
-       logger.info(`All file paths found: ${JSON.stringify(allFilePaths)}`);
+      const audioFiles = files.filter(entry => {
+        const isFile = entry['.tag'] === 'file';
+        if (!isFile) return false;
+        
+        const extension = entry.name.toLowerCase().split('.').pop();
+        const isAudioFile = audioExtensions.includes(extension);
+        
+        // Debug logging for audio files
+        logger.info(`🔍 Audio extension check: "${entry.name}" (${extension}) = ${isAudioFile}`);
+        if (!isAudioFile) {
+          logger.debug(`❌ Not audio file: ${entry.path_lower} (extension: ${extension})`);
+        } else {
+          logger.info(`✅ Audio file found: ${entry.name} (${extension})`);
+        }
+        
+        return isAudioFile;
+      });
+
+      const pdfFiles = files.filter(entry => {
+        const isFile = entry['.tag'] === 'file';
+        if (!isFile) return false;
+        
+        const extension = entry.name.toLowerCase().split('.').pop();
+        const isDocumentFile = documentExtensions.includes(extension);
+        
+        // Debug logging for document files
+        logger.info(`🔍 Document extension check: "${entry.name}" (${extension}) = ${isDocumentFile}`);
+        if (!isDocumentFile) {
+          logger.debug(`❌ Not document file: ${entry.path_lower} (extension: ${extension})`);
+        } else {
+          logger.info(`✅ Document file found: ${entry.name} (${extension})`);
+        }
+        
+        return isDocumentFile;
+      });
+
+      logger.info(`Found ${audioFiles.length} audio files, ${pdfFiles.length} document files (filtered by extension)`);
        
-       // Debug: Log original paths vs lowercase paths
-       const fileDetails = files.filter(entry => entry['.tag'] === 'file').map(entry => ({
-         original: entry.path_display,
-         lower: entry.path_lower,
-         name: entry.name
-       }));
-       logger.info(`File details: ${JSON.stringify(fileDetails)}`);
+      // Debug: Log the extensions we're looking for
+      logger.info(`Audio extensions: ${audioExtensions.join(', ')}`);
+      logger.info(`Document extensions: ${documentExtensions.join(', ')}`);
+      
+      // Debug: Log all file paths to see what we're getting
+      const allFilePaths = files.filter(entry => entry['.tag'] === 'file').map(entry => entry.path_lower);
+      logger.info(`All file paths found: ${JSON.stringify(allFilePaths)}`);
+       
+      // Debug: Log original paths vs lowercase paths
+      const fileDetails = files.filter(entry => entry['.tag'] === 'file').map(entry => ({
+        original: entry.path_display,
+        lower: entry.path_lower,
+        name: entry.name
+      }));
+      logger.info(`File details: ${JSON.stringify(fileDetails)}`);
       
       // Debug: Log which files match each folder
       if (audioFiles.length > 0) {
@@ -196,8 +197,8 @@ class DropboxHandler {
         logger.info(`PDF files found: ${pdfFiles.map(f => f.path_lower).join(', ')}`);
       }
 
-             // Process all files found - let duplicate detection handle whether to create new entries
-       logger.info(`Ready to process: ${audioFiles.length} audio files, ${pdfFiles.length} document files`);
+      // Process all files found - let duplicate detection handle whether to create new entries
+      logger.info(`Ready to process: ${audioFiles.length} audio files, ${pdfFiles.length} document files`);
 
       const processedFiles = [];
       
