@@ -11,15 +11,6 @@ const config = {
     pdfFolderPath: process.env.DROPBOX_PDF_FOLDER_PATH || '/Apps/PDFs'
   },
   
-  googleDrive: {
-    clientId: process.env.GOOGLE_DRIVE_CLIENT_ID,
-    clientSecret: process.env.GOOGLE_DRIVE_CLIENT_SECRET,
-    refreshToken: process.env.GOOGLE_DRIVE_REFRESH_TOKEN,
-    accessToken: process.env.GOOGLE_DRIVE_ACCESS_TOKEN,
-    audioFolderId: process.env.GOOGLE_DRIVE_AUDIO_FOLDER_ID,
-    webhookSecret: process.env.GOOGLE_DRIVE_WEBHOOK_SECRET
-  },
-  
   notion: {
     apiKey: process.env.NOTION_API_KEY,
     databaseId: process.env.NOTION_DATABASE_ID,
@@ -37,27 +28,8 @@ const config = {
   
   processing: {
     maxFileSizeMB: parseInt(process.env.MAX_FILE_SIZE_MB) || 50,
-    supportedFormats: (process.env.SUPPORTED_AUDIO_FORMATS || 'mp3,wav,m4a,flac').split(','),
     supportedDocumentFormats: (process.env.SUPPORTED_DOCUMENT_FORMATS || 'pdf,jpg,jpeg,png,bmp,tiff,tif,webp,docx,doc').split(','),
     tempFolder: process.env.TEMPORARY_FOLDER || './temp'
-  },
-  
-  transcription: {
-    // Auto-formatting settings
-    autoFormat: process.env.AUTO_FORMAT_TRANSCRIPTION === 'true' || true,
-    addTitles: process.env.ADD_TITLES_TO_TRANSCRIPTION === 'true' || true,
-    paragraphBreakThreshold: parseInt(process.env.PARAGRAPH_BREAK_THRESHOLD) || 150, // characters
-    titleFrequency: parseInt(process.env.TITLE_FREQUENCY) || 1000, // characters between titles
-    
-    // Custom prompts
-    keyPointsPrompt: process.env.KEY_POINTS_PROMPT || null, // Use default if not set
-    summaryPrompt: process.env.SUMMARY_PROMPT || null, // Use default if not set
-    
-    // Model settings
-    transcriptionModel: process.env.TRANSCRIPTION_MODEL || 'whisper-1',
-    analysisModel: process.env.ANALYSIS_MODEL || 'gpt-3.5-turbo',
-    maxTokens: parseInt(process.env.MAX_TOKENS) || 500,
-    temperature: parseFloat(process.env.TEMPERATURE) || 0.3
   },
 
   documents: {

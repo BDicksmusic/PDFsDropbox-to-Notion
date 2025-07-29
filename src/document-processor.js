@@ -72,28 +72,28 @@ class DocumentProcessor {
       logger.info('Processing PDF with AI vision model');
       
       const response = await this.openai.chat.completions.create({
-        model: config.documentProcessing.visionModel,
+        model: config.documents.visionModel,
         messages: [
           {
             role: "user",
             content: [
               {
                 type: "text",
-                text: config.documentProcessing.extractionPrompt || 
+                text: config.documents.extractionPrompt || 
                       "Extract all text content from this document. Maintain the original structure and formatting as much as possible. If this is a PDF with multiple pages, extract all pages."
               }
             ]
           }
         ],
-        max_tokens: config.documentProcessing.maxTokens,
-        temperature: config.documentProcessing.temperature
+        max_tokens: config.documents.visionMaxTokens,
+        temperature: config.documents.visionTemperature
       });
 
       const extractedText = response.choices[0].message.content;
       const cost = estimateCost(
         response.usage.prompt_tokens,
         response.usage.completion_tokens,
-        config.documentProcessing.visionModel
+        config.documents.visionModel
       );
 
       return {
@@ -122,35 +122,35 @@ class DocumentProcessor {
       logger.info('Processing image with AI vision model');
       
       const response = await this.openai.chat.completions.create({
-        model: config.documentProcessing.visionModel,
+        model: config.documents.visionModel,
         messages: [
           {
             role: "user",
             content: [
               {
                 type: "text",
-                text: config.documentProcessing.extractionPrompt || 
+                text: config.documents.extractionPrompt || 
                       "Extract all text content from this image. If this is a document, maintain the structure. If it contains tables, preserve the table format. Include all visible text."
               },
               {
                 type: "image_url",
                 image_url: {
                   url: `data:${mimeType};base64,${base64Image}`,
-                  detail: config.documentProcessing.imageQuality
+                  detail: config.documents.imageDetail
                 }
               }
             ]
           }
         ],
-        max_tokens: config.documentProcessing.maxTokens,
-        temperature: config.documentProcessing.temperature
+        max_tokens: config.documents.visionMaxTokens,
+        temperature: config.documents.visionTemperature
       });
 
       const extractedText = response.choices[0].message.content;
       const cost = estimateCost(
         response.usage.prompt_tokens,
         response.usage.completion_tokens,
-        config.documentProcessing.visionModel
+        config.documents.visionModel
       );
 
       return {
@@ -175,7 +175,7 @@ class DocumentProcessor {
     try {
       const systemPrompt = `You are an AI assistant that analyzes ${documentType} content and extracts key information.`;
       
-      const userPrompt = config.documentProcessing.summaryPrompt || 
+      const userPrompt = config.documents.extractionPrompt || 
         `Analyze the following text and provide:
 1. A suitable title for this document
 2. A list of key points (bullet points)
@@ -196,13 +196,13 @@ Text to analyze:
 ${text}`;
 
       const response = await this.openai.chat.completions.create({
-        model: config.documentProcessing.analysisModel,
+        model: config.documents.documentAnalysisModel,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt }
         ],
-        max_tokens: config.documentProcessing.maxTokens,
-        temperature: config.documentProcessing.temperature,
+        max_tokens: config.documents.documentMaxTokens,
+        temperature: config.documents.documentTemperature,
         response_format: { type: "json_object" }
       });
 
@@ -210,7 +210,7 @@ ${text}`;
       const cost = estimateCost(
         response.usage.prompt_tokens,
         response.usage.completion_tokens,
-        config.documentProcessing.analysisModel
+        config.documents.documentAnalysisModel
       );
 
       return {
