@@ -16,7 +16,16 @@ class AutomationServer {
   constructor() {
     this.app = express();
     this.dropboxHandler = new DropboxHandler();
-    this.googleDriveHandler = new GoogleDriveHandler();
+    
+    // Make Google Drive handler optional
+    try {
+      this.googleDriveHandler = new GoogleDriveHandler();
+      logger.info('Google Drive handler initialized successfully');
+    } catch (error) {
+      logger.warn('Google Drive handler initialization failed, continuing without Google Drive support:', error.message);
+      this.googleDriveHandler = null;
+    }
+    
     this.notionHandler = new NotionHandler();
     this.notionPDFHandler = new NotionPDFHandler();
     this.transcriptionHandler = new TranscriptionHandler();
@@ -119,6 +128,12 @@ class AutomationServer {
       try {
         logger.info('Received Google Drive webhook notification');
         
+        // Check if Google Drive handler is available
+        if (!this.googleDriveHandler) {
+          logger.warn('Google Drive handler not initialized, returning 503');
+          return res.status(503).json({ error: 'Google Drive service not available' });
+        }
+        
         // Verify webhook signature if configured
         const signature = req.headers['x-goog-signature'];
         if (!this.googleDriveHandler.verifyWebhookSignature(JSON.stringify(req.body), signature)) {
@@ -154,6 +169,11 @@ class AutomationServer {
         
         let processedFile;
         if (source === 'google-drive') {
+          // Check if Google Drive handler is available
+          if (!this.googleDriveHandler) {
+            return res.status(503).json({ error: 'Google Drive service not available' });
+          }
+          
           // Process Google Drive file
           const fileMetadata = await this.googleDriveHandler.getFileMetadata(filePath);
           const localPath = await this.googleDriveHandler.downloadFile(filePath, fileMetadata.name);
@@ -227,42 +247,46 @@ class AutomationServer {
         const results = [];
         
         // Scan Google Drive for audio files
-        try {
-          const audioFiles = await this.googleDriveHandler.listAudioFiles();
-          logger.info(`Found ${audioFiles.length} audio files in Google Drive`);
-          
-          for (const file of audioFiles) {
-            try {
-              const localPath = await this.googleDriveHandler.downloadFile(file.id, file.name);
-              
-              const processedFile = {
-                originalPath: file.id,
-                localPath: localPath,
-                fileName: file.name,
-                fileType: 'audio',
-                size: file.size,
-                modifiedTime: file.modifiedTime,
-                webViewLink: file.webViewLink
-              };
-              
-              await this.processAudioFile(processedFile);
-              results.push({
-                fileName: file.name,
-                status: 'processed',
-                source: 'google-drive'
-              });
-            } catch (error) {
-              logger.error(`Failed to process audio file ${file.name}:`, error.message);
-              results.push({
-                fileName: file.name,
-                status: 'error',
-                reason: error.message,
-                source: 'google-drive'
-              });
+        if (this.googleDriveHandler) {
+          try {
+            const audioFiles = await this.googleDriveHandler.listAudioFiles();
+            logger.info(`Found ${audioFiles.length} audio files in Google Drive`);
+            
+            for (const file of audioFiles) {
+              try {
+                const localPath = await this.googleDriveHandler.downloadFile(file.id, file.name);
+                
+                const processedFile = {
+                  originalPath: file.id,
+                  localPath: localPath,
+                  fileName: file.name,
+                  fileType: 'audio',
+                  size: file.size,
+                  modifiedTime: file.modifiedTime,
+                  webViewLink: file.webViewLink
+                };
+                
+                await this.processAudioFile(processedFile);
+                results.push({
+                  fileName: file.name,
+                  status: 'processed',
+                  source: 'google-drive'
+                });
+              } catch (error) {
+                logger.error(`Failed to process audio file ${file.name}:`, error.message);
+                results.push({
+                  fileName: file.name,
+                  status: 'error',
+                  reason: error.message,
+                  source: 'google-drive'
+                });
+              }
             }
+          } catch (error) {
+            logger.error('Failed to scan Google Drive:', error.message);
           }
-        } catch (error) {
-          logger.error('Failed to scan Google Drive:', error.message);
+        } else {
+          logger.warn('Google Drive handler not initialized, skipping Google Drive force scan.');
         }
         
         // Scan Dropbox for document files
