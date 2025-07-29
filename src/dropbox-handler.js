@@ -4,7 +4,7 @@ const fsPromises = require('fs').promises;
 const path = require('path');
 const crypto = require('crypto');
 const config = require('../config/config');
-const { logger, ensureTempDir, cleanupTempFile, isValidAudioFormat, isValidFileSize, sanitizeFilename } = require('./utils');
+const { logger, ensureTempDir, cleanupTempFile, isValidAudioFormat, isValidFileSize, sanitizeFilename, generateUniqueFilename } = require('./utils');
 
 class DropboxHandler {
   constructor() {
@@ -247,9 +247,12 @@ class DropboxHandler {
     const originalPath = fileEntry.path_display || fileEntry.path_lower; // Use original case-sensitive path
     const fileName = path.basename(filePath);
     const sanitizedFileName = sanitizeFilename(fileName);
+    
+    // Generate unique filename to prevent conflicts
+    const uniqueFileName = generateUniqueFilename(sanitizedFileName);
 
     logger.info(`🔍 Processing file: ${fileName} (type: ${fileType || 'auto-detect'}, size: ${fileEntry.size} bytes)`);
-    logger.debug(`File details - Original path: ${originalPath}, Lower path: ${filePath}`);
+    logger.debug(`File details - Original path: ${originalPath}, Lower path: ${filePath}, Unique filename: ${uniqueFileName}`);
 
     // Check if we're currently processing this file
     if (this.processingLocks.has(filePath)) {
@@ -298,48 +301,40 @@ class DropboxHandler {
         return null;
       }
 
-      // Check for special characters in the full path that might cause API issues
-      if (filePath.includes('\\') || filePath.includes('//')) {
-        logger.warn(`Skipping file ${fileName}: path contains problematic characters`);
-        return null;
-      }
+      // Download file from Dropbox
+      logger.info(`📥 Downloading file: ${fileName} -> ${uniqueFileName}`);
+      const localPath = await this.downloadFile(originalPath, uniqueFileName);
 
-      // Download the file using original case-sensitive path
-      const localPath = await this.downloadFile(originalPath, sanitizedFileName);
-      
-      // Get shareable URL for tracking using original case-sensitive path
+      // Get shareable URL for tracking
       let shareableUrl = null;
       try {
         shareableUrl = await this.getShareableUrl(originalPath);
+        logger.info(`🔗 Generated shareable URL for ${fileName}: ${shareableUrl}`);
       } catch (error) {
-        logger.warn(`Failed to get shareable URL for ${fileName}:`, error.message);
+        logger.warn(`⚠️ Failed to generate shareable URL for ${fileName}:`, error.message);
       }
 
       // Mark as recently processed
       this.recentlyProcessedFiles.set(filePath, Date.now());
 
-      // Clean up processing lock
-      this.processingLocks.delete(filePath);
-
-      logger.info(`Successfully processed file ${fileName} (${fileType})`);
-      
+      // Return processed file info
       return {
-        originalPath: filePath,
-        fileName: sanitizedFileName,
+        originalPath: originalPath,
         localPath: localPath,
-        size: fileEntry.size,
-        modified: fileEntry.server_modified,
+        fileName: sanitizedFileName, // Use sanitized name for consistency
+        uniqueFileName: uniqueFileName, // Include unique name for reference
         shareableUrl: shareableUrl,
-        fileType: fileType
+        fileType: fileType,
+        size: fileEntry.size,
+        serverModified: fileEntry.server_modified
       };
 
     } catch (error) {
-      logger.error(`Failed to process file ${fileName}:`, error);
-      
-      // Clean up processing lock on error
+      logger.error(`❌ Failed to process file ${fileName}:`, error.message);
+      throw error;
+    } finally {
+      // Remove processing lock
       this.processingLocks.delete(filePath);
-      
-      return null;
     }
   }
 

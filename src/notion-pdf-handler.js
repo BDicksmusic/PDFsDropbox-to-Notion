@@ -695,30 +695,26 @@ class NotionPDFHandler {
 
       logger.info(`Searching for existing PDF page with Dropbox URL: ${shareableUrl}`);
       
+      // Since Notion doesn't support exact URL matching in filters, we need to get all pages and filter
       const response = await axios({
         method: 'POST',
         url: `${this.baseURL}/databases/${this.databaseId}/query`,
         headers: this.getHeaders(),
         data: {
-          filter: {
-            property: 'URL',
-            rich_text: {
-              contains: shareableUrl
-            }
-          }
+          page_size: 100
         }
       });
 
+      // Filter for exact URL matches
       const exactMatches = response.data.results.filter(page => {
         const urlProperty = page.properties.URL;
-        if (urlProperty && urlProperty.rich_text && urlProperty.rich_text.length > 0) {
-          const urlText = urlProperty.rich_text[0].text.content;
-          return urlText === shareableUrl;
+        if (urlProperty && urlProperty.url) {
+          return urlProperty.url === shareableUrl;
         }
         return false;
       });
 
-      logger.info(`Found ${response.data.results.length} PDF pages containing URL, ${exactMatches.length} exact matches`);
+      logger.info(`Found ${response.data.results.length} PDF pages total, ${exactMatches.length} exact URL matches`);
       return exactMatches;
     } catch (error) {
       logger.error(`Failed to search for PDF URL ${shareableUrl}:`, error.response?.data || error.message);
