@@ -37,17 +37,37 @@ class AutomationServer {
       this.notionHandler = new NotionHandler();
       console.log('✅ Notion handler created');
       
-      this.notionPDFHandler = new NotionPDFHandler();
-      console.log('✅ Notion PDF handler created');
+      try {
+        this.notionPDFHandler = new NotionPDFHandler();
+        console.log('✅ Notion PDF handler created');
+      } catch (error) {
+        console.log('⚠️ Notion PDF handler creation failed:', error.message);
+        this.notionPDFHandler = null;
+      }
       
-      this.transcriptionHandler = new TranscriptionHandler();
-      console.log('✅ Transcription handler created');
+      try {
+        this.transcriptionHandler = new TranscriptionHandler();
+        console.log('✅ Transcription handler created');
+      } catch (error) {
+        console.log('⚠️ Transcription handler creation failed:', error.message);
+        this.transcriptionHandler = null;
+      }
       
-      this.documentHandler = new DocumentHandler();
-      console.log('✅ Document handler created');
+      try {
+        this.documentHandler = new DocumentHandler();
+        console.log('✅ Document handler created');
+      } catch (error) {
+        console.log('⚠️ Document handler creation failed:', error.message);
+        this.documentHandler = null;
+      }
       
-      this.urlMonitor = new URLMonitor();
-      console.log('✅ URL monitor created');
+      try {
+        this.urlMonitor = new URLMonitor();
+        console.log('✅ URL monitor created');
+      } catch (error) {
+        console.log('⚠️ URL monitor creation failed:', error.message);
+        this.urlMonitor = null;
+      }
       
       // API rate limiting
       this.apiCallCount = 0;
