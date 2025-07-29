@@ -8,7 +8,7 @@ const DropboxHandler = require('./dropbox-handler');
 const GoogleDriveHandler = require('./google-drive-handler');
 const NotionHandler = require('./notion-handler');
 const NotionPDFHandler = require('./notion-pdf-handler');
-const TranscriptionHandler = require('./transcription');
+const DocumentProcessor = require('./document-processor');
 const DocumentHandler = require('./document-handler');
 const URLMonitor = require('./url-monitor');
 
@@ -65,11 +65,11 @@ class AutomationServer {
       }
       
       try {
-        this.transcriptionHandler = new TranscriptionHandler();
-        console.log('✅ Transcription handler created');
+        this.documentProcessor = new DocumentProcessor();
+        console.log('✅ Document processor created');
       } catch (error) {
-        console.log('⚠️ Transcription handler creation failed:', error.message);
-        this.transcriptionHandler = null;
+        console.log('⚠️ Document processor creation failed:', error.message);
+        this.documentProcessor = null;
       }
       
       try {
@@ -165,8 +165,8 @@ class AutomationServer {
               status: 'operational'
             },
             transcription: {
-              available: !!this.transcriptionHandler,
-              status: this.transcriptionHandler ? 'operational' : 'unavailable'
+              available: !!this.documentProcessor,
+              status: this.documentProcessor ? 'operational' : 'unavailable'
             },
             documentProcessing: {
               available: !!this.documentHandler,
@@ -553,7 +553,7 @@ class AutomationServer {
       }
 
       // For audio files:
-      const processedAudioData = await this.transcriptionHandler.processAudioFile(fileInfo.localPath, fileInfo.fileName);
+      const processedAudioData = await this.documentProcessor.processDocument(fileInfo.localPath);
       const completeAudioData = { ...fileInfo, ...processedAudioData };
       const pageId = await this.notionHandler.createPage(completeAudioData);
       

@@ -73,6 +73,15 @@ const config = {
     documentMaxTokens: parseInt(process.env.DOCUMENT_MAX_TOKENS) || 1000,
     documentTemperature: parseFloat(process.env.DOCUMENT_TEMPERATURE) || 0.3,
     
+    // Vision model settings for GPT-4 Vision
+    visionModel: process.env.VISION_MODEL || 'gpt-4-vision-preview',
+    visionMaxTokens: parseInt(process.env.VISION_MAX_TOKENS) || 4096,
+    visionTemperature: parseFloat(process.env.VISION_TEMPERATURE) || 0.3,
+    imageDetail: process.env.IMAGE_DETAIL || 'high', // 'low', 'high', or 'auto'
+    
+    // Custom prompts
+    extractionPrompt: process.env.EXTRACTION_PROMPT || null,
+    
     // File upload settings
     uploadFilesToNotion: process.env.UPLOAD_FILES_TO_NOTION === 'true' || false
   },
@@ -87,6 +96,16 @@ const config = {
     periodicScanEnabled: process.env.PERIODIC_SCAN_ENABLED === 'true' || false,
     periodicScanIntervalMinutes: parseInt(process.env.PERIODIC_SCAN_INTERVAL_MINUTES) || 30
   }
+};
+
+// Add alias for backward compatibility with document-processor.js
+config.documentProcessing = {
+  visionModel: config.documents.visionModel,
+  maxTokens: config.documents.visionMaxTokens,
+  temperature: config.documents.visionTemperature,
+  imageQuality: config.documents.imageDetail,
+  extractionPrompt: config.documents.extractionPrompt,
+  analysisModel: config.documents.documentAnalysisModel
 };
 
 // Validation

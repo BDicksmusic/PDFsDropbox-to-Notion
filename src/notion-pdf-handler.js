@@ -50,9 +50,19 @@ class NotionPDFHandler {
     const displayName = customName || generatedTitle || fileName.replace(/\.[^/.]+$/, '');
 
     const properties = {
-      // Name property (matches your PDF database) - using link tags relation
-      'Name': await this.buildLinkTagsRelation(generatedTitle || displayName),
-      // Main Entry property (matches your PDF database)
+      // Name property (title)
+      'Name': {
+        title: [
+          {
+            type: 'text',
+            text: {
+              content: generatedTitle || displayName
+            }
+          }
+        ]
+      },
+      
+      // Main Entry property (rich_text) - for extracted text/summary
       'Main Entry': {
         rich_text: [
           {
@@ -67,19 +77,18 @@ class NotionPDFHandler {
 
     // Add URL property with Dropbox shareable link
     if (shareableUrl) {
-      properties['URL'] = await this.buildUrlProperty(shareableUrl);
+      properties['URL'] = {
+        url: shareableUrl
+      };
     }
 
-    // Add Files property with uploaded file if available
+    // Add Files & media property with uploaded file if available
     if (uploadedFile) {
-      properties['Files'] = await this.buildFilesProperty(uploadedFile);
+      properties['Files & media'] = await this.buildFilesProperty(uploadedFile);
     }
 
     // Add Status property
     properties['Status'] = await this.buildStatusProperty('📥');
-
-    // Note: Link Tags property temporarily disabled for testing
-    // properties['Link Tags'] = await this.buildFileTypeLinkTagsRelation(metadata?.fileType);
 
     return {
       parent: {
