@@ -14,39 +14,68 @@ const URLMonitor = require('./url-monitor');
 
 class AutomationServer {
   constructor() {
-    this.app = express();
-    this.dropboxHandler = new DropboxHandler();
-    
-    // Make Google Drive handler optional
     try {
-      this.googleDriveHandler = new GoogleDriveHandler();
-      logger.info('Google Drive handler initialized successfully');
-    } catch (error) {
-      logger.warn('Google Drive handler initialization failed, continuing without Google Drive support:', error.message);
-      this.googleDriveHandler = null;
-    }
-    
-    this.notionHandler = new NotionHandler();
-    this.notionPDFHandler = new NotionPDFHandler();
-    this.transcriptionHandler = new TranscriptionHandler();
-    this.documentHandler = new DocumentHandler();
-    this.urlMonitor = new URLMonitor();
-    
-    // API rate limiting
-    this.apiCallCount = 0;
-    this.dailyApiLimit = config.apiLimits.dailyApiLimit;
-    this.lastResetDate = new Date().toDateString();
-    this.processingQueue = [];
-    
-    // Background mode flag
-    this.backgroundMode = process.env.BACKGROUND_MODE === 'true';
-    
-    // Periodic scan settings
-    this.periodicScanEnabled = config.apiLimits.periodicScanEnabled;
-    this.periodicScanInterval = parseInt(process.env.PERIODIC_SCAN_INTERVAL_MINUTES) || 30; // Default 30 minutes
+      console.log('🔧 Initializing Automation Server...');
+      
+      this.app = express();
+      console.log('✅ Express app created');
+      
+      this.dropboxHandler = new DropboxHandler();
+      console.log('✅ Dropbox handler created');
+      
+      // Make Google Drive handler optional
+      try {
+        this.googleDriveHandler = new GoogleDriveHandler();
+        console.log('✅ Google Drive handler created');
+        logger.info('Google Drive handler initialized successfully');
+      } catch (error) {
+        console.log('⚠️ Google Drive handler creation failed:', error.message);
+        logger.warn('Google Drive handler initialization failed, continuing without Google Drive support:', error.message);
+        this.googleDriveHandler = null;
+      }
+      
+      this.notionHandler = new NotionHandler();
+      console.log('✅ Notion handler created');
+      
+      this.notionPDFHandler = new NotionPDFHandler();
+      console.log('✅ Notion PDF handler created');
+      
+      this.transcriptionHandler = new TranscriptionHandler();
+      console.log('✅ Transcription handler created');
+      
+      this.documentHandler = new DocumentHandler();
+      console.log('✅ Document handler created');
+      
+      this.urlMonitor = new URLMonitor();
+      console.log('✅ URL monitor created');
+      
+      // API rate limiting
+      this.apiCallCount = 0;
+      this.dailyApiLimit = config.apiLimits.dailyApiLimit;
+      this.lastResetDate = new Date().toDateString();
+      this.processingQueue = [];
+      
+      // Background mode flag
+      this.backgroundMode = process.env.BACKGROUND_MODE === 'true';
+      
+      // Periodic scan settings
+      this.periodicScanEnabled = config.apiLimits.periodicScanEnabled;
+      this.periodicScanInterval = parseInt(process.env.PERIODIC_SCAN_INTERVAL_MINUTES) || 30; // Default 30 minutes
 
-    this.setupMiddleware();
-    this.setupRoutes();
+      console.log('🔧 Setting up middleware...');
+      this.setupMiddleware();
+      console.log('✅ Middleware setup complete');
+      
+      console.log('🔧 Setting up routes...');
+      this.setupRoutes();
+      console.log('✅ Routes setup complete');
+      
+      console.log('✅ Server initialization complete');
+      
+    } catch (error) {
+      console.error('❌ Server initialization failed:', error);
+      throw error;
+    }
   }
 
   setupMiddleware() {
