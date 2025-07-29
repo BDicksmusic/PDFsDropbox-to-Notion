@@ -195,11 +195,15 @@ class GoogleDriveHandler {
       
       logger.info(`Found ${audioFiles.length} audio files to process`);
       
-      // Filter for recently modified files (within last 5 minutes)
-      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+      // Filter for recently modified files (within last 30 minutes instead of 5)
+      const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
       const recentFiles = audioFiles.filter(file => {
         const modifiedTime = new Date(file.modifiedTime);
-        return modifiedTime > fiveMinutesAgo;
+        const isRecent = modifiedTime > thirtyMinutesAgo;
+        
+        logger.info(`File ${file.name}: modified ${modifiedTime.toISOString()}, recent: ${isRecent}`);
+        
+        return isRecent;
       });
 
       logger.info(`Found ${recentFiles.length} recently modified audio files`);
