@@ -552,11 +552,10 @@ class AutomationServer {
         return;
       }
 
-      // Transcribe audio
-      const transcription = await this.transcriptionHandler.transcribeAudio(fileInfo.localPath);
-      
-      // Create Notion page
-      const pageId = await this.notionHandler.createPage(fileInfo, transcription);
+      // For audio files:
+      const processedAudioData = await this.transcriptionHandler.processAudioFile(fileInfo.localPath, fileInfo.fileName);
+      const completeAudioData = { ...fileInfo, ...processedAudioData };
+      const pageId = await this.notionHandler.createPage(completeAudioData);
       
       logger.info(`Successfully processed audio file ${fileInfo.fileName} -> Notion page: ${pageId}`);
       
@@ -593,11 +592,10 @@ class AutomationServer {
         return;
       }
 
-      // Extract text from document
-      const documentContent = await this.documentHandler.extractText(fileInfo.localPath);
-      
-      // Create Notion page
-      const pageId = await this.notionPDFHandler.createPage(fileInfo, documentContent);
+      // For document files:
+      const processedDocumentData = await this.documentHandler.processDocument(fileInfo.localPath, fileInfo.fileName);
+      const completeDocumentData = { ...fileInfo, ...processedDocumentData };
+      const pageId = await this.notionPDFHandler.createPage(completeDocumentData);
       
       logger.info(`Successfully processed document file ${fileInfo.fileName} -> Notion page: ${pageId}`);
       
