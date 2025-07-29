@@ -185,9 +185,12 @@ class AutomationServer {
           return res.status(503).json({ error: 'Google Drive service not available' });
         }
         
-        // Verify webhook signature if configured
-        const signature = req.headers['x-webhook-secret'] || req.headers['x-goog-signature'];
-        logger.info('Signature header:', signature ? 'present' : 'missing');
+        // Verify webhook signature if configured - check multiple possible header names
+        const signature = req.headers['x-webhook-secret'] || 
+                         req.headers['x-goog-signature'] || 
+                         req.headers['X-Webhook-Secret'] ||
+                         req.headers['X-Goog-Signature'];
+        logger.info('Signature header found:', signature ? 'yes' : 'no');
         
         if (!this.googleDriveHandler.verifyWebhookSignature(JSON.stringify(req.body), signature)) {
           logger.warn('Invalid webhook signature from Google Drive');

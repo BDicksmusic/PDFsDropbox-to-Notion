@@ -73,7 +73,7 @@ function sendWebhookNotification() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Webhook-Secret': WEBHOOK_SECRET
+        'x-webhook-secret': WEBHOOK_SECRET
       },
       payload: JSON.stringify(payload)
     };
