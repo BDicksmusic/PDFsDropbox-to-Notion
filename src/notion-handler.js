@@ -19,12 +19,12 @@ class NotionHandler {
   }
 
   // Create a new page in the Notion database
-  async createPage(audioData, customName = null) {
+  async createPage(documentData, customName = null) {
     try {
-      const displayName = customName || audioData.fileName;
+      const displayName = customName || documentData.fileName;
       logger.info(`Creating Notion page for: ${displayName}`);
 
-      const pageData = await this.buildPageData(audioData, customName);
+      const pageData = await this.buildPageData(documentData, customName);
       
       const response = await axios({
         method: 'POST',
@@ -37,14 +37,14 @@ class NotionHandler {
       return response.data;
 
     } catch (error) {
-      logger.error(`Failed to create Notion page for ${audioData.fileName}:`, error.response?.data || error.message);
+      logger.error(`Failed to create Notion page for ${documentData.fileName}:`, error.response?.data || error.message);
       throw error;
     }
   }
 
   // Build the page data structure for Notion
-  async buildPageData(audioData, customName = null) {
-    const { fileName, generatedTitle, summary, keyPoints, actionItems, topics, sentiment, metadata, shareableUrl } = audioData;
+  async buildPageData(documentData, customName = null) {
+    const { fileName, generatedTitle, summary, keyPoints, actionItems, topics, sentiment, metadata, shareableUrl } = documentData;
     // Use customName if provided, otherwise use generated title, fallback to filename
     const displayName = customName || generatedTitle || fileName.replace(/\.[^/.]+$/, ''); // Remove file extension
 
@@ -79,10 +79,10 @@ class NotionHandler {
       properties['URL'] = await this.buildUrlProperty(shareableUrl);
     }
 
-    // Add Audio Log property to mark as processed
-    properties['Audio Log?'] = {
-      checkbox: true
-    };
+          // Add Document Processed property to mark as processed
+      properties['Document Processed'] = {
+        checkbox: true
+      };
 
     // Add Status property with 📥 emoji (auto-detect field type)
     properties['Status'] = await this.buildStatusProperty('📥');
@@ -93,7 +93,7 @@ class NotionHandler {
       },
       properties: properties,
       // Add all content as formatted blocks
-      children: this.buildContentBlocks(audioData, customName)
+      children: this.buildContentBlocks(documentData, customName)
     };
   }
 
@@ -280,8 +280,8 @@ class NotionHandler {
   }
 
   // Build formatted content blocks for the page
-  buildContentBlocks(audioData, customName = null) {
-    const { fileName, summary, keyPoints, actionItems, topics, sentiment, metadata, originalText } = audioData;
+  buildContentBlocks(documentData, customName = null) {
+    const { fileName, summary, keyPoints, actionItems, topics, sentiment, metadata, originalText } = documentData;
     const displayName = customName || fileName.replace(/\.[^/.]+$/, ''); // Remove file extension
     const blocks = [];
 
@@ -390,15 +390,15 @@ class NotionHandler {
           rich_text: [
             { type: 'text', text: { content: `📁 File: ${displayName}` } },
             { type: 'text', text: { content: '\n' } },
-            { type: 'text', text: { content: `⏱️ Duration: ${this.formatDuration(metadata?.duration || 0)}` } },
+            { type: 'text', text: { content: `📄 Type: ${metadata?.documentType || 'Unknown'}` } },
             { type: 'text', text: { content: '\n' } },
             { type: 'text', text: { content: `📝 Words: ${metadata?.wordCount || 0}` } },
             { type: 'text', text: { content: '\n' } },
-            { type: 'text', text: { content: `🌍 Language: ${metadata?.language || 'Unknown'}` } },
+            { type: 'text', text: { content: `📏 Characters: ${metadata?.characterCount || 0}` } },
             { type: 'text', text: { content: '\n' } },
             { type: 'text', text: { content: `😊 Sentiment: ${this.normalizeSentiment(sentiment)}` } },
             { type: 'text', text: { content: '\n' } },
-            { type: 'text', text: { content: `💰 Total Cost: $${(metadata?.totalCost || 0).toFixed(4)}` } },
+            { type: 'text', text: { content: `💰 Processing Cost: $${(metadata?.processingCost || 0).toFixed(4)}` } },
             { type: 'text', text: { content: '\n' } },
             { type: 'text', text: { content: `📅 Processed: ${new Date(metadata?.processedAt || Date.now()).toLocaleString()}` } }
           ]
@@ -705,11 +705,11 @@ class NotionHandler {
   }
 
   // Update existing page
-  async updatePage(pageId, audioData, customName = null) {
+  async updatePage(pageId, documentData, customName = null) {
     try {
       logger.info(`Updating Notion page: ${pageId}`);
 
-      const pageData = await this.buildPageData(audioData, customName);
+      const pageData = await this.buildPageData(documentData, customName);
       
       // Update page properties
       const response = await axios({
@@ -781,36 +781,36 @@ class NotionHandler {
   }
 
   // Create or update page (handles both cases) - now with URL-based tracking
-  async createOrUpdatePage(audioData, customName = null, forceUpdate = false) {
+  async createOrUpdatePage(documentData, customName = null, forceUpdate = false) {
     try {
       let existingPages = [];
       
       // Primary check: search by Dropbox URL if available
-      if (audioData.shareableUrl) {
-        existingPages = await this.searchByDropboxUrlAuto(audioData.shareableUrl);
+      if (documentData.shareableUrl) {
+        existingPages = await this.searchByDropboxUrlAuto(documentData.shareableUrl);
         logger.info(`URL-based search found ${existingPages.length} existing pages`);
       }
       
       // Fallback: search by filename if no URL or no results from URL search
       if (existingPages.length === 0) {
         logger.info('Falling back to filename-based search');
-        existingPages = await this.searchByFileName(audioData.fileName);
+        existingPages = await this.searchByFileName(documentData.fileName);
         logger.info(`Filename-based search found ${existingPages.length} existing pages`);
       }
       
       if (existingPages.length > 0 && forceUpdate) {
-        logger.info(`Force updating existing page for: ${audioData.fileName}`);
-        return await this.updatePage(existingPages[0].id, audioData, customName);
+        logger.info(`Force updating existing page for: ${documentData.fileName}`);
+        return await this.updatePage(existingPages[0].id, documentData, customName);
       } else if (existingPages.length > 0) {
-        logger.info(`Page already exists for: ${audioData.fileName}, skipping creation`);
+        logger.info(`Page already exists for: ${documentData.fileName}, skipping creation`);
         return existingPages[0]; // Return existing page
       } else {
-        logger.info(`Creating new page for: ${audioData.fileName}`);
-        return await this.createPage(audioData, customName);
+        logger.info(`Creating new page for: ${documentData.fileName}`);
+        return await this.createPage(documentData, customName);
       }
 
     } catch (error) {
-      logger.error(`Failed to create or update page for ${audioData.fileName}:`, error.message);
+      logger.error(`Failed to create or update page for ${documentData.fileName}:`, error.message);
       throw error;
     }
   }
