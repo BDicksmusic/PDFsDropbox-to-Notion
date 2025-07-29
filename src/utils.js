@@ -101,7 +101,7 @@ function formatDuration(seconds) {
 function estimateCost(inputTokens, outputTokens = 0, model = 'gpt-3.5-turbo') {
   const costs = {
     'gpt-3.5-turbo': { input: 0.0015, output: 0.002 }, // per 1K tokens
-    'gpt-4-vision-preview': { input: 0.01, output: 0.03 }, // per 1K tokens
+    'gpt-4o': { input: 0.005, output: 0.015 }, // per 1K tokens
     'gpt-4-turbo-preview': { input: 0.01, output: 0.03 }, // per 1K tokens
     'whisper-1': 0.006 // per minute
   };

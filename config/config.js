@@ -32,7 +32,7 @@ const config = {
 
   documents: {
     // Vision model settings for GPT-4 Vision
-    visionModel: process.env.VISION_MODEL || 'gpt-4-vision-preview',
+    visionModel: process.env.VISION_MODEL || 'gpt-4o',
     visionMaxTokens: parseInt(process.env.VISION_MAX_TOKENS) || 4096,
     visionTemperature: parseFloat(process.env.VISION_TEMPERATURE) || 0.3,
     imageDetail: process.env.IMAGE_DETAIL || 'high',
