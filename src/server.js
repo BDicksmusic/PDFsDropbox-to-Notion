@@ -3,7 +3,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const config = require('../config/config');
-const { logger, ensureTempDir, cleanupTempFile } = require('./utils');
+const { logger, ensureTempDir, cleanupTempFile, isValidAudioFormat, isValidFileSize } = require('./utils');
 const DropboxHandler = require('./dropbox-handler');
 const GoogleDriveHandler = require('./google-drive-handler');
 const NotionHandler = require('./notion-handler');
@@ -26,8 +26,27 @@ class AutomationServer {
       // Make Google Drive handler optional
       try {
         this.googleDriveHandler = new GoogleDriveHandler();
-        console.log('✅ Google Drive handler created');
-        logger.info('Google Drive handler initialized successfully');
+        
+        // Validate Google Drive configuration
+        if (this.googleDriveHandler.isConfigured()) {
+          logger.info('Google Drive handler initialized successfully');
+          
+          // Test connection (but don't fail if it doesn't work)
+          this.googleDriveHandler.validateConnection()
+            .then(isValid => {
+              if (isValid) {
+                logger.info('✅ Google Drive connection validated successfully');
+              } else {
+                logger.warn('⚠️ Google Drive connection validation failed - will retry on first use');
+              }
+            })
+            .catch(error => {
+              logger.warn('⚠️ Google Drive connection test failed:', error.message);
+            });
+        } else {
+          logger.warn('Google Drive handler created but not properly configured');
+          this.googleDriveHandler = null;
+        }
       } catch (error) {
         console.log('⚠️ Google Drive handler creation failed:', error.message);
         logger.warn('Google Drive handler initialization failed, continuing without Google Drive support:', error.message);
@@ -124,13 +143,62 @@ class AutomationServer {
     });
 
     // Health check endpoint
-    this.app.get('/health', (req, res) => {
-      res.json({ 
-        status: 'healthy', 
-        timestamp: new Date().toISOString(),
-        backgroundMode: this.backgroundMode,
-        service: 'Automation-Connections'
-      });
+    this.app.get('/health', async (req, res) => {
+      try {
+        const healthStatus = {
+          status: 'healthy',
+          timestamp: new Date().toISOString(),
+          backgroundMode: this.backgroundMode,
+          service: 'Automation-Connections',
+          services: {
+            dropbox: {
+              available: !!this.dropboxHandler,
+              status: 'operational'
+            },
+            googleDrive: {
+              available: !!this.googleDriveHandler,
+              configured: this.googleDriveHandler ? this.googleDriveHandler.isConfigured() : false,
+              status: 'unknown'
+            },
+            notion: {
+              available: !!this.notionHandler,
+              status: 'operational'
+            },
+            transcription: {
+              available: !!this.transcriptionHandler,
+              status: this.transcriptionHandler ? 'operational' : 'unavailable'
+            },
+            documentProcessing: {
+              available: !!this.documentHandler,
+              status: this.documentHandler ? 'operational' : 'unavailable'
+            }
+          }
+        };
+
+        // Check Google Drive connection if available
+        if (this.googleDriveHandler && this.googleDriveHandler.isConfigured()) {
+          try {
+            const isValid = await this.googleDriveHandler.validateConnection();
+            healthStatus.services.googleDrive.status = isValid ? 'operational' : 'connection_failed';
+          } catch (error) {
+            healthStatus.services.googleDrive.status = 'error';
+            healthStatus.services.googleDrive.error = error.message;
+          }
+        } else if (this.googleDriveHandler) {
+          healthStatus.services.googleDrive.status = 'not_configured';
+        } else {
+          healthStatus.services.googleDrive.status = 'unavailable';
+        }
+
+        res.json(healthStatus);
+      } catch (error) {
+        logger.error('Health check error:', error);
+        res.status(500).json({ 
+          status: 'error',
+          error: error.message,
+          timestamp: new Date().toISOString()
+        });
+      }
     });
 
     // Dropbox webhook verification endpoint
@@ -195,15 +263,11 @@ class AutomationServer {
         logger.info('Webhook secret configured:', this.googleDriveHandler.webhookSecret ? 'yes' : 'no');
         logger.info('Webhook secret value:', this.googleDriveHandler.webhookSecret ? this.googleDriveHandler.webhookSecret.substring(0, 10) + '...' : 'none');
         
-        // TEMPORARILY BYPASS SIGNATURE VERIFICATION FOR TESTING
-        logger.warn('TEMPORARILY BYPASSING SIGNATURE VERIFICATION FOR TESTING');
-        /*
         if (!this.googleDriveHandler.verifyWebhookSignature(JSON.stringify(req.body), signature)) {
           logger.warn('Invalid webhook signature from Google Drive');
           logger.warn('Expected signature based on body and secret');
           return res.status(401).json({ error: 'Invalid signature' });
         }
-        */
 
         // Process the webhook notification
         const processedFiles = await this.googleDriveHandler.processWebhookNotification(req.body);

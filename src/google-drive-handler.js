@@ -22,6 +22,14 @@ class GoogleDriveHandler {
     try {
       logger.info('Attempting to refresh Google Drive access token');
       
+      if (!this.refreshToken) {
+        throw new Error('No refresh token configured for Google Drive');
+      }
+      
+      if (!this.clientId || !this.clientSecret) {
+        throw new Error('Google Drive OAuth credentials not properly configured');
+      }
+      
       const response = await axios({
         method: 'POST',
         url: 'https://oauth2.googleapis.com/token',
@@ -42,7 +50,16 @@ class GoogleDriveHandler {
       return this.accessToken;
     } catch (error) {
       logger.error('Failed to refresh Google Drive access token:', error.response?.data || error.message);
-      throw new Error('Failed to refresh Google Drive access token');
+      
+      if (error.response?.status === 400) {
+        logger.error('Invalid refresh token or OAuth credentials. Please regenerate tokens.');
+        throw new Error('Invalid OAuth credentials - please regenerate tokens');
+      } else if (error.response?.status === 401) {
+        logger.error('Unauthorized - OAuth credentials may be invalid');
+        throw new Error('OAuth credentials are invalid');
+      } else {
+        throw new Error(`Failed to refresh Google Drive access token: ${error.message}`);
+      }
     }
   }
 
@@ -257,6 +274,39 @@ class GoogleDriveHandler {
       return signature === expectedSignature;
     } catch (error) {
       logger.error('Error verifying Google Drive webhook signature:', error);
+      return false;
+    }
+  }
+
+  // Check if Google Drive handler is properly configured
+  isConfigured() {
+    const hasCredentials = !!(this.clientId && this.clientSecret && this.refreshToken);
+    const hasFolder = !!this.audioFolderId;
+    const hasWebhookSecret = !!this.webhookSecret;
+    
+    logger.info('Google Drive configuration check:', {
+      hasCredentials,
+      hasFolder,
+      hasWebhookSecret,
+      hasAccessToken: !!this.accessToken
+    });
+    
+    return hasCredentials && hasFolder;
+  }
+
+  // Validate configuration and test connection
+  async validateConnection() {
+    try {
+      if (!this.isConfigured()) {
+        throw new Error('Google Drive handler not properly configured');
+      }
+      
+      // Test the connection by listing files
+      await this.listAudioFiles();
+      logger.info('Google Drive connection validated successfully');
+      return true;
+    } catch (error) {
+      logger.error('Google Drive connection validation failed:', error.message);
       return false;
     }
   }
