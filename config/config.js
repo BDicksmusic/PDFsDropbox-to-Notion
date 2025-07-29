@@ -11,6 +11,15 @@ const config = {
     pdfFolderPath: process.env.DROPBOX_PDF_FOLDER_PATH || '/Apps/PDFs'
   },
   
+  googleDrive: {
+    clientId: process.env.GOOGLE_DRIVE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_DRIVE_CLIENT_SECRET,
+    refreshToken: process.env.GOOGLE_DRIVE_REFRESH_TOKEN,
+    accessToken: process.env.GOOGLE_DRIVE_ACCESS_TOKEN,
+    audioFolderId: process.env.GOOGLE_DRIVE_AUDIO_FOLDER_ID,
+    webhookSecret: process.env.GOOGLE_DRIVE_WEBHOOK_SECRET
+  },
+  
   notion: {
     apiKey: process.env.NOTION_API_KEY,
     databaseId: process.env.NOTION_DATABASE_ID,
@@ -59,16 +68,24 @@ const config = {
     // Image preprocessing
     imagePreprocessing: process.env.ENABLE_IMAGE_PREPROCESSING === 'true' || true,
     
-    // Analysis settings
-    analysisModel: process.env.DOCUMENT_ANALYSIS_MODEL || 'gpt-3.5-turbo',
-    maxTextLength: parseInt(process.env.MAX_DOCUMENT_TEXT_LENGTH) || 16000,
+    // Document analysis settings
+    documentAnalysisModel: process.env.DOCUMENT_ANALYSIS_MODEL || 'gpt-3.5-turbo',
+    documentMaxTokens: parseInt(process.env.DOCUMENT_MAX_TOKENS) || 1000,
+    documentTemperature: parseFloat(process.env.DOCUMENT_TEMPERATURE) || 0.3,
     
     // File upload settings
-    uploadToNotion: process.env.UPLOAD_FILES_TO_NOTION === 'true' || true
+    uploadFilesToNotion: process.env.UPLOAD_FILES_TO_NOTION === 'true' || false
   },
-  
+
   logging: {
     level: process.env.LOG_LEVEL || 'info'
+  },
+
+  // API rate limiting
+  apiLimits: {
+    dailyApiLimit: parseInt(process.env.DAILY_API_LIMIT) || 1000,
+    periodicScanEnabled: process.env.PERIODIC_SCAN_ENABLED === 'true' || false,
+    periodicScanIntervalMinutes: parseInt(process.env.PERIODIC_SCAN_INTERVAL_MINUTES) || 30
   }
 };
 
