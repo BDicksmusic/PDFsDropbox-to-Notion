@@ -9,6 +9,9 @@ const { logger, ensureTempDir, cleanupTempFile, isValidAudioFormat, isValidFileS
 class DropboxHandler {
   constructor() {
     this.accessToken = config.dropbox.accessToken;
+    this.refreshToken = config.dropbox.refreshToken;
+    this.appKey = config.dropbox.appKey;
+    this.appSecret = config.dropbox.appSecret;
     this.audioFolderPath = config.dropbox.folderPath;
     this.pdfFolderPath = config.dropbox.pdfFolderPath;
     this.webhookSecret = config.dropbox.webhookSecret;
@@ -18,18 +21,74 @@ class DropboxHandler {
     this.processingLocks = new Map();
   }
 
-  // Make authenticated request (simplified - no automatic token refresh)
+  // Refresh access token using refresh token
+  async refreshAccessToken() {
+    try {
+      logger.info('Attempting to refresh Dropbox access token');
+      
+      const response = await axios({
+        method: 'POST',
+        url: 'https://api.dropboxapi.com/oauth2/token',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        data: new URLSearchParams({
+          grant_type: 'refresh_token',
+          refresh_token: this.refreshToken,
+          client_id: this.appKey,
+          client_secret: this.appSecret
+        })
+      });
+
+      this.accessToken = response.data.access_token;
+      logger.info('Successfully refreshed Dropbox access token');
+      
+      return this.accessToken;
+    } catch (error) {
+      logger.error('Failed to refresh access token:', error.response?.data || error.message);
+      throw new Error('Failed to refresh access token');
+    }
+  }
+
+  // Make authenticated request with automatic token refresh
   async makeAuthenticatedRequest(requestConfig) {
-    // Simply add the authorization header and make the request
-    const response = await axios({
-      ...requestConfig,
-      headers: {
-        ...requestConfig.headers,
-        'Authorization': `Bearer ${this.accessToken}`
+    try {
+      // Add the authorization header and make the request
+      const response = await axios({
+        ...requestConfig,
+        headers: {
+          ...requestConfig.headers,
+          'Authorization': `Bearer ${this.accessToken}`
+        }
+      });
+      
+      return response;
+    } catch (error) {
+      // If we get a 401 error, try to refresh the token and retry
+      if (error.response?.status === 401) {
+        logger.warn('Received 401 error, attempting to refresh token and retry');
+        
+        try {
+          await this.refreshAccessToken();
+          
+          // Retry the request with the new token
+          const retryResponse = await axios({
+            ...requestConfig,
+            headers: {
+              ...requestConfig.headers,
+              'Authorization': `Bearer ${this.accessToken}`
+            }
+          });
+          
+          return retryResponse;
+        } catch (refreshError) {
+          logger.error('Failed to refresh token and retry:', refreshError.message);
+          throw error; // Re-throw the original error
+        }
       }
-    });
-    
-    return response;
+      
+      throw error;
+    }
   }
 
   // Verify webhook signature

@@ -170,9 +170,9 @@ class AutomationServer {
       try {
         logger.info('Force scan requested - processing all files in monitored folders');
         
-        // Clear the recent processing cache to allow reprocessing
-        this.dropboxHandler.recentlyProcessedFiles.clear();
-        logger.info('Cleared recent processing cache');
+        // Don't clear the recent processing cache - let Notion duplicate detection handle it
+        // this.dropboxHandler.recentlyProcessedFiles.clear();
+        // logger.info('Cleared recent processing cache');
         
         // Get all files from both folders
         const files = await this.dropboxHandler.listFiles();
@@ -673,6 +673,30 @@ class AutomationServer {
   async processDocumentFile(file, customName = null, forceReprocess = false) {
     try {
       logger.info(`Processing document file: ${file.fileName}`);
+      
+      // Check if file already exists in Notion (unless force reprocessing)
+      if (!forceReprocess) {
+        let alreadyProcessed = false;
+        
+        if (file.shareableUrl) {
+          alreadyProcessed = await this.isFileAlreadyProcessedByUrl(file.shareableUrl, file.fileName);
+          logger.info(`Document processing URL-based check: ${alreadyProcessed ? 'already processed' : 'new file'}`);
+        } else {
+          logger.warn(`No shareable URL for document processing, falling back to filename check`);
+          alreadyProcessed = await this.isFileAlreadyProcessedByFilename(file.fileName);
+          logger.info(`Document processing filename-based check: ${alreadyProcessed ? 'already processed' : 'new file'}`);
+        }
+        
+        if (alreadyProcessed) {
+          logger.info(`Skipping ${file.fileName}: Already processed in Notion`);
+          return {
+            fileName: file.fileName,
+            skipped: true,
+            reason: 'File already processed in Notion',
+            fileType: 'document'
+          };
+        }
+      }
       
       // Step 1: Extract text and analyze content
       const documentData = await this.documentHandler.processDocument(
