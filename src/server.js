@@ -176,6 +176,8 @@ class AutomationServer {
     this.app.post('/webhook/google-drive', async (req, res) => {
       try {
         logger.info('Received Google Drive webhook notification');
+        logger.info('Headers received:', Object.keys(req.headers));
+        logger.info('Body received:', JSON.stringify(req.body));
         
         // Check if Google Drive handler is available
         if (!this.googleDriveHandler) {
@@ -184,7 +186,9 @@ class AutomationServer {
         }
         
         // Verify webhook signature if configured
-        const signature = req.headers['x-goog-signature'];
+        const signature = req.headers['x-webhook-secret'] || req.headers['x-goog-signature'];
+        logger.info('Signature header:', signature ? 'present' : 'missing');
+        
         if (!this.googleDriveHandler.verifyWebhookSignature(JSON.stringify(req.body), signature)) {
           logger.warn('Invalid webhook signature from Google Drive');
           return res.status(401).json({ error: 'Invalid signature' });
